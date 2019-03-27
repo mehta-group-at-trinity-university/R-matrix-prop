@@ -1,0 +1,4 @@
+NumParticles	NumChannels	NumTot		SpatialDim (double-prec)
+2		3		3		3.d0
+mass1		mass2		mass3		mass4
+1.d0		1.d0		-		-
