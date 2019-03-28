@@ -83,18 +83,28 @@ c      print*,'Count = ',Count,'Left = ',Left,'Right = ',Right
 
 
 ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-      subroutine CheckBasisPhiBP(RMin,RMax,Left,Right,aLeft,aRight,RDim,RNumPoints,RPoints,Deriv,order,file)
+      subroutine CheckBasisBP(xDim,xNumPoints,xPoints,xBounds,order,file,LegPoints,xLeg,u)
       implicit none
-      double precision, external :: BasisPhiBP
-      integer MatrixDim,RDim,nch,beta,i,RNumPoints,Left,Right,Deriv,order,file,ix
-      double precision R,RMin,RMax,RPoints(RNumPoints)
-      double precision aLeft,aRight
+      integer xDim,xNumPoints,order,file,ix,kx,lx,LegPoints,xBounds(*)
 
-      do ix=1,RDim
-         R=RMin
-         do while (R.le.RMax)
-            write(file,*) R, BasisPhiBP(R,Left,Right,aLeft,aRight,order,RDim,RPoints,RNumPoints,Deriv,ix)      
-            R = R+0.0001d0
+      double precision xPoints(xNumPoints),ax,bx,x(LegPoints,xNumPoints-1),xScale(xNumPoints)
+      double precision u(LegPoints,xNumPoints,xDim),xScaledZero,xLeg(LegPoints)
+      x=0.d0
+      do kx = 1,xNumPoints-1
+         ax = xPoints(kx)
+         bx = xPoints(kx+1)
+         xScale(kx) = 0.5d0*(bx-ax)
+         xScaledZero = 0.5d0*(bx+ax)
+         do lx = 1,LegPoints
+            x(lx,kx) = xScale(kx)*xLeg(lx) + xScaledZero
+         enddo
+      enddo
+     
+      do ix=1,xDim
+         do kx = xBounds(ix),xBounds(ix+Order+1)-1
+            do lx = 1,LegPoints
+               write(file,*) x(lx,kx), u(lx,kx,ix)
+            enddo
          enddo
          write(file,*) ' '
       enddo
