@@ -83,23 +83,11 @@ c      print*,'Count = ',Count,'Left = ',Left,'Right = ',Right
 
 
 ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-      subroutine CheckBasisBP(xDim,xNumPoints,xPoints,xBounds,order,file,LegPoints,xLeg,u)
+      subroutine CheckBasisBP(xDim,xNumPoints,xBounds,Order,file,LegPoints,u,x)
       implicit none
-      integer xDim,xNumPoints,order,file,ix,kx,lx,LegPoints,xBounds(*)
-
-      double precision xPoints(xNumPoints),ax,bx,x(LegPoints,xNumPoints-1),xScale(xNumPoints)
-      double precision u(LegPoints,xNumPoints,xDim),xScaledZero,xLeg(LegPoints)
-      x=0.d0
-      do kx = 1,xNumPoints-1
-         ax = xPoints(kx)
-         bx = xPoints(kx+1)
-         xScale(kx) = 0.5d0*(bx-ax)
-         xScaledZero = 0.5d0*(bx+ax)
-         do lx = 1,LegPoints
-            x(lx,kx) = xScale(kx)*xLeg(lx) + xScaledZero
-         enddo
-      enddo
-     
+      integer xDim,xNumPoints,Order,file,ix,kx,lx,LegPoints,xBounds(*)
+      double precision x(LegPoints,xNumPoints-1)
+      double precision u(LegPoints,xNumPoints,xDim)
       do ix=1,xDim
          do kx = xBounds(ix),xBounds(ix+Order+1)-1
             do lx = 1,LegPoints

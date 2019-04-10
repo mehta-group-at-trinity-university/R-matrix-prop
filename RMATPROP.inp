@@ -1,17 +1,17 @@
 NumParticles	NumChannels	SpatialDim (double-prec)	NumAllChan
-2		3		3.d0	   			3
+2		3		3.d0	   			20
 
 mass1		mass2		mass3		mass4
-1.d0		1.d0		-		-
+2.d0		2.d0		-		-
 
-xMin		xMax		xNumPoints 
-5d0		15d0		10
+xMin		xMax		xNumPoints 	LegPoints
+5d0		15d0		30		10
 
-NumSectors	Left		Right
-1		2		2
+NumSectors	Left		Right		kStart		kEnd
+1		2		2		1d20		1d20
 
-
-
+Energy
+2.5d0
 
 
 !----------------------------------------------------------------------------------------------------
@@ -28,4 +28,5 @@ NumSectors	Left		Right
 ! NumSectors =			Number of R-matrix sectors to be used in the propagator
 ! Left =     			Boundary condition at xMin
 ! Right =			Boundary condition at xMax
+! Energy =			Energy (the value of 2.5d0 is in a.u. used for the Baluja test case)
 !----------------------------------------------------------------------------------------------------

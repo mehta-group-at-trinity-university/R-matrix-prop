@@ -1,38 +1,56 @@
+      subroutine SqrMatInv(A, N)
+      implicit none
+      integer N,info,lwk
+      integer, allocatable :: ipiv(:)
+      double precision, allocatable :: work(:)
+      double precision A(N,N)
+      allocate(ipiv(N))
+      call dgetrf(N, N, A, N, ipiv, info)
+      allocate(work(1))
+      lwk = -1
+      call dgetri(N, A, N, ipiv, work, lwk, info)
+      lwk = work(1)
+      deallocate(work)
+      allocate(work(lwk))
+      call dgetri(N, A, N, ipiv, work, lwk, info)
+      deallocate(ipiv,work)
+      end
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-! Computes the eigenvalues and eigenvectors of a generalized eigenvalue problem (not banded form)
+!     Computes the eigenvalues and eigenvectors of a generalized eigenvalue problem (not banded form)
+!     this wrapper preserves the contents of G and L so that they are not overwritten
       subroutine Mydggev(N,G,LDG,L,LDL,eval,evec)
       implicit none
       integer LDG,N,LDL,info
-      double precision G(LDG,N),L(LDL,N),eval(N),evec(N,N)
+      double precision G(LDG,N),L(LDL,N),eval(N),evec(N,N),GL(LDG,N),LL(LDL,N)
       double precision, allocatable :: alphar(:),alphai(:),beta(:),work(:),VL(:,:)
       integer lwork,i,im,in,j
       
       allocate(alphar(N),alphai(N),beta(N))
-            
+      GL=G
+      LL=L
       info = 0
       lwork = -1
       allocate(work(1))
-      call dggev('N','V',N,G,LDG,L,LDL,alphar,alphai,beta,VL,1,evec,N,work,lwork,info)
-      do im = 1,N
-         alphar(im)=0.0d0
-         alphai(im)=0.0d0
-         beta(im)=0.0d0
-         eval(im)=0.0d0
-         do in = 1,N
-            evec(im,in)=0.0d0
-         enddo
-      enddo
+      call dggev('N','V',N,GL,LDG,LL,LDL,alphar,alphai,beta,VL,1,evec,N,work,lwork,info)
+
+      alphar=0d0
+      alphai=0d0
+      beta=0d0
+      evec=0d0
+      eval=0d0
       
       lwork=work(1)
       deallocate(work)
       allocate(work(lwork))
-      call dggev('N','V',N,G,LDG,L,LDL,alphar,alphai,beta,VL,1,evec,N,work,lwork,info)
+      GL=G
+      LL=L
+      call dggev('N','V',N,GL,LDG,LL,LDL,alphar,alphai,beta,VL,1,evec,N,work,lwork,info)
   
       do i = 1, N
-      if (abs(alphai(i)).ge.1e-15) then
+      if (abs(alphai(i)).ge.1d-15) then
          print*, '#eigenvalue may be complex! alphai(',i,')=',alphai(i)
       endif
-      if(abs(beta(i)).ge.1e-15) then
+      if(abs(beta(i)).ge.1d-15) then
          eval(i) = alphar(i)/beta(i)
       endif
       enddo

@@ -1,4 +1,3 @@
-!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 module Quadrature
   implicit none
   integer LegPoints
@@ -46,33 +45,31 @@ module Quadrature
     end subroutine GetGaussFactors
 
   end module Quadrature
-!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+  !****************************************************************************************************
 module GlobalVars
   implicit none
-  integer NumParticles, NumChannels, NumSectors, NumAllChan, Order, xDim, xNumPoints, Left, Right, xDimMin, n
-  Integer MatrixDim
+  integer NumParticles, NumChannels,  NumAllChan, Order
+  integer NumSectors, StartBC, EndBC, xTotNumPoints
+  !----------------------------------------------------------------------------------------------------
   double precision AlphaFactor ! This is the parameter that appears in the reduced wavefunction u(R) = R^(AlphaFactor) Psi(R)
   ! Typical choice is either AlphaFactor = 0 (reduced wavefunction = wavefunction), or AlphaFactor = (EffDim - 1)/2 (eliminates 1st derivative terms from KE)
-  double precision reducedmass, alpha, xMin, xMax
-  double precision SpatialDim, EffDim, MultipoleCoupMat(3,3,2), threshold(3)
+  !----------------------------------------------------------------------------------------------------
+  double precision reducedmass, xStart, xEnd, energy,kStart,kEnd
+  double precision SpatialDim, EffDim
   double precision, allocatable :: mass(:)
-  double precision RMatBaluja1(3,3)                                   ! this is the Baluja et al R-matrix at r=5 for their test case
-  double precision RMatBaluja2(3,3)                                   ! this is the Baluja et al R-matrix at r=15 for their test case
-  double precision, allocatable :: u(:,:,:), ux(:,:,:)                ! basis sets for the multi-sector domain
-  double precision, allocatable :: su(:,:,:), sux(:,:,:)              ! basis sets for the elemental sector in the R-matrix propogator
-  double precision, allocatable :: xPoints(:)                         ! the radial (x) grid in each sector
-  double precision, allocatable :: xSector(:)                         ! the mesh for the x-sectors
-  integer, allocatable :: xBounds(:)
   character*64 InputFile
   complex*16 II
   parameter(II=(0.0d0,1.0d0))
-  
+!****************************************************************************************************
 contains
-  subroutine ReadInputFile
+  subroutine ReadGlobal
+!    use DataStructures
+    !    use GlobalVars
+    use Quadrature
+    implicit none
+    integer n
     ! Be sure to match the format of the input file to the format of the read statements below
-
-
-    open(unit=7,file=InputFile(1:index(InputFile,' ')-1))
+    open(unit=7,file=InputFile(1:index(InputFile,' ')-1),action='read')
     read(7,*)
     read(7,*) NumParticles, NumChannels, SpatialDim, NumAllChan
     allocate(mass(NumParticles))
@@ -81,332 +78,707 @@ contains
     read(7,*) (mass(n), n=1,NumParticles)
     read(7,*)
     read(7,*)
-    read(7,*) xMin, xMax, xNumPoints
+    read(7,*) xStart, xEnd, xTotNumPoints, LegPoints
     read(7,*)
     read(7,*)
-    read(7,*) NumSectors, Left, Right
+    read(7,*) NumSectors, StartBC, EndBC, kStart, kEnd
+    read(7,*)
+    read(7,*)
+    read(7,*) Energy
     
     close(unit=7)
     EffDim = NumParticles*SpatialDim - SpatialDim
     AlphaFactor = (EffDim-1d0)/2d0
-
-    xDimMin=xNumPoints+order-3
-    xDim=xDimMin
-    if (Left .eq. 2) xDim = xDim + 1
-    if (Right .eq. 2) xDim = xDim + 1
-    MatrixDim = xDim*NumChannels
-    write(6,"(A,T25,2I3)") 'Left BC...', Left
-    write(6,"(A,T25,2I3)") 'Right BC...', Right
-    write(6,"(A,T25,2I3)") 'xDimMin....', xDimMin
-    write(6,"(A,T25,2I3)") 'xDim....', xDim
-    write(6,"(A,T25,2I3)") 'xNumPoints....', xNumPoints
-    write(6,"(A,T25,2I3)") 'Order....', Order
-    write(6,"(A,T25,F3.1)") 'EffDim...', EffDim
-    write(6,"(A,T20,I8)") 'MatrixDim...', MatrixDim
-
-  end subroutine ReadInputFile
-  
+    
+    If (NumParticles.eq.2) then
+       reducedmass = mass(1)*mass(2)/(mass(1)+mass(2))
+    else
+       write(6,*) "Reduced mass not set. Must set reduced mass"
+       stop
+    end If
+    Order = 5
+    
+  end subroutine ReadGlobal
+  !****************************************************************************************************
 end module GlobalVars
-!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-program main
-  use GlobalVars
-  use Quadrature
+!****************************************************************************************************
+!****************************************************************************************************
+module DataStructures
   implicit none
-  double precision kl,kr
-  double precision, allocatable :: evec(:,:), eval(:)
+  !****************************************************************************************************
+  type BPData !This data type contains the array of basis functions and potential matrix
+     integer xNumPoints, xDim, Left, Right, Order, NumChannels, MatrixDim
+     double precision, allocatable :: u(:,:,:),ux(:,:,:),xPoints(:),x(:,:)
+     double precision, allocatable :: Pot(:,:,:,:)
+     double precision kl, kr
+     integer, allocatable :: xBounds(:), kxMin(:,:), kxMax(:,:)
+  end type BPData
+  !****************************************************************************************************
+  type GenEigVal
+     integer MatrixDim
+     double precision, allocatable :: Gam(:,:), Lam(:,:), evec(:,:), eval(:)
+  end type GenEigVal
+  !****************************************************************************************************
+  type BoxData
+     integer NumOpenL, NumOpenR, NumOpen, betaMax
+     double precision, allocatable :: Z(:,:), ZP(:,:), NBeta(:), Norm(:,:)
+     double precision, allocatable :: RF(:,:)!, T(:,:), S(:,:), K(:,:)
+     double precision, allocatable :: R11(:,:), R12(:,:), R21(:,:), R22(:,:)
+  end type BoxData
+end module DataStructures
+!****************************************************************************************************
+!****************************************************************************************************
 
-  !--------------------------------------------------
-  ! Set the total number of spatial dimensions
-  ! (It's a double precision number for convenience)
-  !--------------------------------------------------
-  SpatialDim = 3.d0
+!  module MatrixElements
+!contains
+  subroutine CalcGamLam(BPD,EIG)
+    use DataStructures
+    use Quadrature
+    use GlobalVars
+    implicit none
+    type(BPData) :: BPD
+    type(GenEigVal) :: EIG
+    integer ix,ixp,lx,kx,mch,nch
+    double precision a, ax, bx, xIntScale(BPD%xNumPoints), TempG, xScaledZero, x1, x2
 
-  !--------------------------------------------------
-  ! Read in the quadrature data stored in Quadrature module.
-  !--------------------------------------------------
-  LegendreFile = 'Legendre.dat'
-  LegPoints = 10
-  allocate(xLeg(LegPoints),wLeg(LegPoints))
-  call GetGaussFactors(LegendreFile,LegPoints,xLeg,wLeg)
-  
-  !--------------------------------------------------
-  ! Initialize the Baluja et al data and print it to the screen
-  !--------------------------------------------------
-  call SetMultipoleCoup()
-  write(6,*) 'The starting R-Matrix at r=5.d0:'
-  call printmatrix(RMatBaluja1,3,3,6)
+    
+    x1=BPD%xPoints(1)
+    x2=BPD%xPoints(BPD%xNumPoints)
+    
+    allocate(EIG%Gam(BPD%MatrixDim,BPD%MatrixDim))
+    allocate(EIG%Lam(BPD%MatrixDim,BPD%MatrixDim))
+    !Calculate the Gamma Matrix elements
+    do ix = 1,BPD%xDim
+       do ixp = max(1,ix-BPD%Order),min(BPD%xDim,ix+BPD%Order)
+          do mch = 1,BPD%NumChannels
+             ! Do the channel-diagonal part first:
+             do kx = BPD%kxMin(ixp,ix),BPD%kxMax(ixp,ix)
+                ax = BPD%xPoints(kx)
+                bx = BPD%xPoints(kx+1)
+                xIntScale(kx) = 0.5d0*(bx-ax)
+                xScaledZero = 0.5d0*(bx+ax)
+                TempG = 0.0d0
+                ! Ultimately, these matrix elements should be calculated elsewhere since they won't change from sector to sector.
+                do lx = 1,LegPoints
+                   a = wLeg(lx)*xIntScale(kx)*BPD%x(lx,kx)**(EffDim-1d0-2d0*AlphaFactor)
+                   ! The KE matrix elements
+                   TempG = TempG - a*(BPD%ux(lx,kx,ix)*BPD%ux(lx,kx,ixp))
+                   ! The diagonal "overlap"*energy and additional term from reducing the wavefunction
+                   TempG = TempG + a*BPD%u(lx,kx,ix)*2*reducedmass*(Energy - (BPD%Pot(mch,mch,lx,kx) - &
+                        AlphaFactor*(AlphaFactor-EffDim+2)/(2d0*reducedmass*BPD%x(lx,kx)**2)))*BPD%u(lx,kx,ixp)                     
+                enddo
+                EIG%Gam((mch-1)*BPD%xDim+ix,(mch-1)*BPD%xDim+ixp) = EIG%Gam((mch-1)*BPD%xDim+ix,(mch-1)*BPD%xDim+ixp) + TempG ! place values into Gamma0
+             enddo
 
-  !----------------------------------------------------------------------
-  ! Read information from the input file
-  !----------------------------------------------------------------------
-  InputFile = 'RMATPROP.inp'
-  call ReadInputFile()
-  
-  !--------------------------------------------------
-  ! Find the eigenvalues and eigenvectors of the initial R matrix, and print to screen.
-  !--------------------------------------------------
-!!$  allocate(evec(3,3),eval(3))
-!!$  evec = RMatBaluja1
-!!$  call Mydsyev(evec,3,eval,evec)
-!!$  write(6,*) 'The eigenvalues of the original R-Matrix:'
-!!$  call printmatrix(eval,3,1,6)
-!!$  write(6,*) 'The eigenvectors of the original R-Matrix:'
-!!$  call printmatrix(evec,3,3,6)
-!!$  deallocate(evec,eval)
-
-
-  !------------------------------------------------------------
-  ! Set the left/right boundary conditions
-  ! Determine and set the dimensionality of the x-basis
-  ! Set xMin, xMax
-  !------------------------------------------------------------
-!  xMin = 5.0d0
-!  xMax = 15.0d0
-!  xNumPoints = 10
-!  Order = 5
-!  Left=2
-!  Right=2
-!  kl=5.d0
-!  kr=5.d0
-
-  
-  allocate(xPoints(xNumPoints))
-  allocate(xBounds(xNumPoints+2*Order))   ! allocate xBounds before calling CalcBasisFuncs
-  allocate(u(LegPoints,xNumPoints,xDim),ux(LegPoints,xNumPoints,xDim)) ! allocate memory for basis functions
-  
-  call GridMaker(xNumPoints,xMin,xMax,xPoints)
-
-  call CalcBasisFuncsBP(Left,Right,kl,kr,Order,xPoints,LegPoints,xLeg, &
-       xDim,xBounds,xNumPoints,0,u)
-  call CalcBasisFuncsBP(Left,Right,kl,kr,Order,xPoints,LegPoints,xLeg, &
-       xDim,xBounds,xNumPoints,1,ux)
-  
-  !----------------------------------------------------------------------------------------------------
-  ! Comment/uncomment the next line if you want to print the basis to file fort.300
-  !----------------------------------------------------------------------------------------------------
-  !call CheckBasisBP(xDim,xNumPoints,xPoints,xBounds,order,300,LegPoints,xLeg,u)
-  if(NumSectors.eq.1) then
-     call RMATPROP(Left,Right,Rmin,Rmax)
-  end if
-
-
-
-  deallocate(xBounds,u,ux, xPoints)
-20 format(1P,100e14.8)
-
-
-  
-end program main
-!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-subroutine RMATPROP(SectorLeft,SectorRight,R1,R2)
-  use GlobalVars
-  use Quadrature  
-  implicit none
-  double precision, allocatable :: GammaMat(:,:), Lambda(:,:), evec(:,:), eval(:)
-  double precision, allocatable :: xNew(:,:), xIntScale(:)
-  double precision, R1, R2, TempG, xScaledZero
-  integer, allocatable :: kxMin(:,:), kxMax(:,:)
-  integer SectorLeft,SectorRight,mch,nch
-  integer ix,ixp,kx
-  
-  !----------------------------------------------------------------------------------------------------
-  ! allocate memory
-  !----------------------------------------------------------------------------------------------------
-  allocate(GammaMat(MatrixDim,MatrixDim),Lambda(MatrixDim,MatrixDim),evec(MatrixDim,MatrixDim),eval(MatrixDim))
-  allocate(kxMin(xDim,xDim),kxMax(xDim,xDim)) !
-  allocate(xNew(LegPoints, xNumPoints-1))
-  allocate(xIntScale(xNumPoints))
-  !----------------------------------------------------------------------------------------------------
-  ! Calculate the Lambda matrix
-  !----------------------------------------------------------------------------------------------------
-  Lambda = 0.d0
-  if(SectorRight.eq.2) then
-     do mch = 1, NumChannels
-        Lambda((mch-1)*xDim+xDim,(mch-1)*xDim+xDim) = R2**(EffDim-1d0-2d0*AlphaFactor)
-     enddo
-  endif
-  if(SectorLeft.eq.2) then
-     do mch = 1, NumChannels
-        Lambda((mch-1)*xDim+1,(mch-1)*xDim+1) = R1**(EffDim-1d0-2d0*AlphaFactor)
-     enddo
-  endif
-
-  !----------------------------------------------------------------------------------------------------
-  ! Calculate the GammaMat matrix
-  !----------------------------------------------------------------------------------------------------
-  GammaMat=0d0
-  ! Determine the subsector bounds
-  do ix = 1,xDim
-     do ixp = 1,xDim
-        kxMin(ixp,ix) = max(xBounds(ix),xBounds(ixp))
-        kxMax(ixp,ix) = min(xBounds(ix+Order+1),xBounds(ixp+Order+1))-1 ! 
-     enddo
-  enddo
-  
-  call xIntegrationPoints(xNumPoints,xPoints,xLeg,LegPoints,xNew)
-  
-  do ix = 1,xDim
-     do ixp = max(1,ix-Order),min(xDim,ix+Order)
-        do mch = 1,NumChannels
-           ! Do the channel-diagonal part first:
-           do kx = kxMin(ixp,ix),kxMax(ixp,ix)
-              ax = xPoints(kx)
-              bx = xPoints(kx+1)
-              xIntScale(kx) = 0.5d0*(bx-ax)
-              xScaledZero = 0.5d0*(bx+ax)
-              TempG = 0.0d0
-              do lx = 1,LegPoints
-                 a = wLeg(lx)*xIntScale(kx)*xNew**(EffDim-1d0-2d0*AlphaFactor)
-                 TempG = TempG + a*(-ux(lx,kx,ix)*ux(lx,kx,ixp))
-                 TempG = TempG + a*u(lx,kx,ix)*(2*mu*Energy - (AlphaFactor*(EffDim-2)-AlphaFactor**2)/xNew(lx,kx)**2)*u(lx,kx,ixp)
-              enddo
-              GammaMat((mch-1)*xDim+ix,(mch-1)*xDim+ixp) = GammaMat((mch-1)*xDim+ix,(nch-1)*xDim+ixp) + TempG ! place values into GammaMat
-           enddo
-           ! Now do the off-diagonal parts
-           do nch = 1, mch-1
-              do kx = kxMin(ixp,ix),kxMax(ixp,ix)
-                 ax = xPoints(kx)
-                 bx = xPoints(kx+1)
-                 xIntScale(kx) = 0.5d0*(bx-ax)
-                 xScaledZero = 0.5d0*(bx+ax)
-                 TempG = 0.0d0
-                 do lx = 1,LegPoints
-                    a = wLeg(lx)*xIntScale(kx)*xNew**(EffDim-1d0-2d0*AlphaFactor)
-                    !  INCLUDE THE POTENTIAL HERE.  Right now this does nothing.
-                 enddo
-                 !GammaMat((mch-1)*xDim+ix,(mch-1)*xDim+ixp) = GammaMat((mch-1)*xDim+ix,(nch-1)*xDim+ixp) + TempG ! place values into GammaMat
-              enddo
+             ! Now do the off-diagonal parts
+             do nch = 1, mch-1
+                do kx = BPD%kxMin(ixp,ix),BPD%kxMax(ixp,ix)
+                   ax = BPD%xPoints(kx)
+                   bx = BPD%xPoints(kx+1)
+                   xIntScale(kx) = 0.5d0*(bx-ax)
+                   xScaledZero = 0.5d0*(bx+ax)
+                   TempG = 0.0d0
+                   do lx = 1,LegPoints
+                      a = wLeg(lx)*xIntScale(kx)*BPD%x(lx,kx)**(EffDim-1d0-2d0*AlphaFactor)
+                      ! The potential matrix elements calculated here
+                      TempG = TempG - a*BPD%u(lx,kx,ix)*2.0d0*reducedmass*BPD%Pot(mch,nch,lx,kx)*BPD%u(lx,kx,ixp)
+                   enddo
+                   EIG%Gam((mch-1)*BPD%xDim+ix,(nch-1)*BPD%xDim+ixp) = EIG%Gam((mch-1)*BPD%xDim +ix, (nch-1)*BPD%xDim +ixp) + TempG ! place values into EIG%Gam
+                enddo
+                EIG%Gam((nch-1)*BPD%xDim+ix,(mch-1)*BPD%xDim+ixp) = EIG%Gam((mch-1)*BPD%xDim+ix,(nch-1)*BPD%xDim+ixp)  ! fill in symmetric element mch <--> nch
              enddo
           enddo
        enddo
     enddo
-  
 
-  
-  
-end subroutine RMATPROP
-!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    !Calculate the Lambda matrix elements
+    EIG%Lam = 0.d0
 
-!----------------------------------------------------------------------------------------------------
-! This subroutine sets the multipole coupling elements for the test case described in Baluja et al CPC (1982) paper
-!----------------------------------------------------------------------------------------------------
-subroutine SetMultipoleCoup()
-  use GlobalVars
+    if(BPD%Right.eq.2) then
+       do mch = 1, BPD%NumChannels
+          EIG%Lam( (mch-1)*BPD%xDim + BPD%xDim, (mch-1)*BPD%xDim + BPD%xDim ) = 1d0!x2**(EffDim-1d0-2d0*AlphaFactor)
+       enddo
+    endif
+    if(BPD%Left.eq.2) then
+       do mch = 1, NumChannels
+          EIG%Lam((mch-1)*BPD%xDim + 1,(mch-1)*BPD%xDim + 1) = 1d0!x1**(EffDim-1d0-2d0*AlphaFactor)
+       enddo
+    endif
+
+  end subroutine CalcGamLam
+  
+  !end module MatrixElements
+  module BalujaParameters
   implicit none
+    double precision BalujaMCmat(3,3,2), BalujaEth(3)              ! this is the Baluja et al Multipole coupling matrix and thresholds
+    double precision RMatBaluja1(3,3)                                   ! this is the Baluja et al R-matrix at r=5 for their test case
+    double precision RMatBaluja2(3,3)                                   ! this is the Baluja et al R-matrix at r=15 for their test case
+    double precision Znet                                               ! this is the charge seen by the electron
+    double precision lmom(3)                                            ! partial wave for each channel
+  contains
+    !----------------------------------------------------------------------------------------------------
+    ! This subroutine sets the multipole coupling elements for the test case described in Baluja et al CPC (1982) paper
+    !----------------------------------------------------------------------------------------------------
+    subroutine SetMultipoleCoup()
+      implicit none
 
-  
-  threshold(1)=0.0d0
-  threshold(2)=0.0d0
-  threshold(3)=2.169d0
-  
-  MultipoleCoupMat(1,1,1)=0.0d0
-  MultipoleCoupMat(1,2,1)=0.0d0
-  MultipoleCoupMat(1,3,1)=-0.5682977d0
-  MultipoleCoupMat(2,1,1)=0.0d0
-  MultipoleCoupMat(2,2,1)=0.0d0
-  MultipoleCoupMat(2,3,1)=-0.8036944d0
-  MultipoleCoupMat(3,1,1)=-0.5682977d0
-  MultipoleCoupMat(3,2,1)=-0.8036944d0
-  MultipoleCoupMat(3,3,1)=0.0d0
-  
-  MultipoleCoupMat(1,1,2)=0.0d0
-  MultipoleCoupMat(1,2,2)=-0.5554260d0
-  MultipoleCoupMat(1,3,2)=0.0d0
-  MultipoleCoupMat(2,1,2)=-0.5554260d0
-  MultipoleCoupMat(2,2,2)=-0.3927455d0
-  MultipoleCoupMat(2,3,2)=0.0d0
-  MultipoleCoupMat(3,1,2)=0.0d0
-  MultipoleCoupMat(3,2,2)=0.0d0
-  MultipoleCoupMat(3,3,2)=0.0d0
-
-  
-  RMatBaluja1(1,1) = 0.145599d0
-  RMatBaluja1(1,2) = 0.00559130d0
-  RMatBaluja1(1,3) = 0.000514900d0
-  RMatBaluja1(2,1) = 0.00559130d0
-  RMatBaluja1(2,2) = -0.00811540d0
-  RMatBaluja1(2,3) = -0.01735370d0
-  RMatBaluja1(3,1) = 0.000514900d0
-  RMatBaluja1(3,2) = -0.01735370d0
-  RMatBaluja1(3,3) = 0.00829450d0
+      lmom(1)=0d0
+      lmom(2)=2d0
+      lmom(3)=1d0
       
-end subroutine SetMultipoleCoup
+      Znet = 1d0
 
-!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+      !I beleive the thresholds here are really threshold values of 2*mu*Eth
+      BalujaEth(1)=0.0d0
+      BalujaEth(2)=0.0d0
+      BalujaEth(3)=2.1689316d0
+
+      ! These are the aij's 
+      BalujaMCmat(1,1,1)=0.0d0
+      BalujaMCmat(1,2,1)=0.0d0
+      BalujaMCmat(1,3,1)=-0.5682977d0
+
+      BalujaMCmat(2,1,1)=0.0d0
+      BalujaMCmat(2,2,1)=0.0d0
+      BalujaMCmat(2,3,1)=-0.8036944d0
+
+      BalujaMCmat(3,1,1)=-0.5682977d0
+      BalujaMCmat(3,2,1)=-0.8036944d0
+      BalujaMCmat(3,3,1)=0.0d0
+      
+      BalujaMCmat(1,1,2)=0.0d0
+      BalujaMCmat(1,2,2)=-0.5554260d0
+      BalujaMCmat(1,3,2)=0.0d0
+
+      BalujaMCmat(2,1,2)=-0.5554260d0
+      BalujaMCmat(2,2,2)=-0.3927455d0
+      BalujaMCmat(2,3,2)=0.0d0
+
+      BalujaMCmat(3,1,2)=0.0d0
+      BalujaMCmat(3,2,2)=0.0d0
+      BalujaMCmat(3,3,2)=0.0d0
+      
+      RMatBaluja1(1,1) = 0.145599d0
+      RMatBaluja1(1,2) = 0.00559130d0
+      RMatBaluja1(1,3) = 0.000514900d0
+
+      RMatBaluja1(2,1) = 0.00559130d0
+      RMatBaluja1(2,2) = -0.00811540d0
+      RMatBaluja1(2,3) = -0.01735370d0
+
+      RMatBaluja1(3,1) = 0.000514900d0
+      RMatBaluja1(3,2) = -0.01735370d0
+      RMatBaluja1(3,3) = 0.00829450d0
+
+      !BalujaMCmat = BalujaMCmat*0.5d0
+      
+      RMatBaluja2(1,1) = -0.392776d0
+      RMatBaluja2(1,2) = -0.0134222d0
+      RMatBaluja2(1,3) = -0.00283486d0
+      RMatBaluja2(2,1) = -0.0134222d0
+      RMatBaluja2(2,2) = 0.0211938d0
+      RMatBaluja2(2,3) = 0.01156956d0
+      RMatBaluja2(3,1) = -0.00283486d0
+      RMatBaluja2(3,2) = 0.01156956d0
+      RMatBaluja2(3,3) = 0.145266d0
+      
+      
+    end subroutine SetMultipoleCoup
+    !****************************************************************************************************
+    subroutine SetBalujaPotential(BPD)
+      use DataStructures
+      use Quadrature
+      implicit none
+      type(BPData) BPD
+      integer kx,lx,mch,nch
+      double precision ax,bx,xScaledZero
+      double precision xScale(BPD%xNumPoints)
+
+      call SetMultipoleCoup()
+      
+      do kx = 1,BPD%xNumPoints-1
+         ax = BPD%xPoints(kx)
+         bx = BPD%xPoints(kx+1)
+         xScale(kx) = 0.5d0*(bx-ax)
+         xScaledZero = 0.5d0*(bx+ax)
+         do lx = 1,LegPoints
+            BPD%x(lx,kx) = xScale(kx)*xLeg(lx) + xScaledZero
+            do mch=1,BPD%NumChannels
+               BPD%Pot(mch,mch,lx,kx) = BalujaPotential(mch,mch,BPD%x(lx,kx))
+               do nch=1,mch-1
+                  BPD%Pot(mch,nch,lx,kx) = BalujaPotential(mch,nch,BPD%x(lx,kx))
+                  BPD%Pot(nch,mch,lx,kx) = BPD%Pot(mch,nch,lx,kx) ! Potential is symmetric
+               enddo
+            enddo
+         enddo
+      enddo
+    end subroutine SetBalujaPotential
+    !****************************************************************************************************
+    double precision function BalujaPotential(mch,nch,R)
+      !----------------------------------------------------------------------------------------------------
+      ! This subroutine returns the Baluja et al potential
+      !----------------------------------------------------------------------------------------------------
+      implicit none
+      integer, intent(in) :: mch, nch
+      integer Lam
+      double precision, intent(in) :: R
+      double precision reducedmass
+
+      reducedmass = 1.d0
+      BalujaPotential = 0d0
+      do Lam = 1,2
+         BalujaPotential = BalujaPotential - BalujaMCmat(mch,nch,Lam)*R**(-Lam-1d0)/(2.d0*reducedmass)
+      enddo
+      if(mch.eq.nch) then
+         BalujaPotential = BalujaPotential + &
+              lmom(mch)*(lmom(mch)+1)/(2d0*reducedmass*R**2) - Znet/R + BalujaEth(mch)/(2.d0*reducedmass) !
+      end if
+      
+      return
+      
+    end function BalujaPotential
+    !****************************************************************************************************
+  end module BalujaParameters
+  !****************************************************************************************************
+
+!****************************************************************************************************
+!****************************************************************************************************
+program main
+  use DataStructures
+  use GlobalVars
+  use BalujaParameters
+  use Quadrature
+!  use MatrixElements
+  implicit none
+  type(BPData) BPD
+  type(GenEigVal) EIG
+  type(BoxData) BA, BB
+  double precision, allocatable :: evec(:,:), eval(:)!, temp0(:,:)
+  !----------------------------------------------------------------------
+  ! Read information from the input file
+  !----------------------------------------------------------------------
+  InputFile = 'RMATPROP.inp'
+  call ReadGlobal()
+  !--------------------------------------------------
+  ! Read in the quadrature data stored in Quadrature module.
+  !--------------------------------------------------
+  LegendreFile = 'Legendre.dat'
+  allocate(xLeg(LegPoints),wLeg(LegPoints))
+  call GetGaussFactors(LegendreFile,LegPoints,xLeg,wLeg)
+
+  ! Intitializes some BPD variables to the input values.
+  BPD%NumChannels = NumChannels
+  BPD%Order = Order
+  BPD%Left = StartBC
+  BPD%Right = EndBC
+  BPD%xNumPoints=xTotNumPoints
+  BPD%kl = kStart ! only relevant for Left = 3. This is the normal log-derivative at x1
+  BPD%kr = kEnd ! only relevant for Right = 3. This is the normal log-derivative at x2
+  
+  allocate(BPD%xPoints(BPD%xNumPoints))
+  allocate(BPD%xBounds(BPD%xNumPoints + 2*BPD%Order))   ! allocate xBounds before calling CalcBasisFuncs
+  allocate(BPD%x(LegPoints,BPD%xNumPoints-1))
+
+  call GridMakerLinear(BPD%xNumPoints,xStart,xEnd,BPD%xPoints)
+  call MakeBPData(BPD)
+
+  write(6,"(A,T25,2I3)") 'Left BC...', BPD%Left
+  write(6,"(A,T25,2I3)") 'Right BC...', BPD%Right
+  write(6,"(A,T25,2I3)") 'xNumPoints....', BPD%xNumPoints
+  write(6,"(A,T25,2I3)") 'Order....', BPD%Order
+  write(6,"(A,T25,F3.1)") 'EffDim...', EffDim
+  write(6,"(A,T25,F3.1)") 'Energy...', Energy
+  write(6,"(A,T20,F8.4)") 'Reduced mass...', reducedmass
+  write(6,"(A,T20,100F8.4)") 'xPoints...', BPD%xPoints
+  write(6,"(A,T25,2I3)") 'xDim....', BPD%xDim
+  write(6,"(A,T20,I8)") 'MatrixDim...', BPD%MatrixDim      
+
+
+  !--------------------------------------------------
+  ! Initialize the Baluja et al data and print it to the screen
+  !--------------------------------------------------
+  call SetBalujaPotential(BPD)
+  !----------------------------------------------------------------------------------------------------
+  ! Comment/uncomment the next line if you want to print the basis to file fort.300
+  !----------------------------------------------------------------------------------------------------
+  call CheckBasisBP(BPD%xDim,BPD%xNumPoints,BPD%xBounds,BPD%Order,300,LegPoints,BPD%u,BPD%x)
+
+  write(6,*) '--------------------------------'
+  write(6,*) 'The starting R-Matrix at r=5.d0:'
+  call printmatrix(RMatBaluja1,3,3,6)
+  write(6,*) '--------------------------------'
+
+  EIG%MatrixDim=BPD%MatrixDim
+  !allocate(temp0(BPD%MatrixDim,BPD%MatrixDim))
+  allocate(EIG%evec(EIG%MatrixDim,EIG%MatrixDim),EIG%eval(EIG%MatrixDim))
+  call CalcGamLam(BPD,EIG)
+  call Mydggev(EIG%MatrixDim,EIG%Gam,EIG%MatrixDim,EIG%Lam,EIG%MatrixDim,EIG%eval,EIG%evec)
+
+  BA%NumOpenL = 0
+  BA%NumOpenR = 3
+  BA%NumOpen = 3
+  BA%betaMax = BA%NumOpen
+  
+  BB%NumOpenL = 3
+  BB%NumOpenR = 3
+  BB%NumOpen = 6
+  
+  allocate(BA%RF(BB%NumOpenR,BA%NumOpenR))
+
+  BA%RF = RMatBaluja1
+  allocate(BB%RF(BB%NumOpenR,BB%NumOpenR),BB%Z(BB%NumOpen,BB%NumOpen),BB%ZP(BB%NumOpen,BB%NumOpen))
+
+  call RProp(BA, BB, BPD, EIG)
+
+  write(6,*) "The Exact R-Matrix From Baluja et al at R=15.0 is:"
+  call printmatrix(RMatBaluja2,3,3,6)
+!!$  if(NumSectors.eq.1) then
+!!$     call RMATPROP(Left,Right,xStart,xEnd)
+!!$  end if
+
+
+20 format(1P,100e14.8)
+end program main
+!****************************************************************************************************
+!****************************************************************************************************
 subroutine printmatrix(M,nr,nc,file)
   implicit none
   integer nr,nc,file,j,k
   double precision M(nr,nc)
   
   do j = 1,nr
-     write(file,20) (M(j,k), k = 1,nc)
+     write(file,30) (M(j,k), k = 1,nc)
   enddo
 
-20 format(1P,100e14.5)
+20 format(1P,100D12.4)
+30 format(100F12.6)
 end subroutine printmatrix
-!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-!!$subroutine InitializePropBasis(Left,Right,xPoints,xNumPoints,xBounds)
-!!$  use GlobalVars
-!!$  use Quadrature
-!!$  implicit none
-!!$  integer Left, Right, xNumPoints, 
-!!$  
-!!$  call CalcBasisFuncs(Left,Right,Order,xPoints,LegPoints,xLeg, &
-!!$       xDim,xBounds,xNumPoints,0,u)
-!!$ call CalcBasisFuncs(Left,Right,Order,xPoints,LegPoints,xLeg, &
-!!$       xDim,xBounds,xNumPoints,0,u)
-!!$  
-!!$  
-!!$end subroutine InitializePropBasis
-!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-subroutine GridMaker(xNumPoints,xMin,xMax,xPoints)
+!****************************************************************************************************
+subroutine GridMakerLinear(xNumPoints,x1,x2,xPoints)
   implicit none
-  integer xNumPoints
-  double precision xMin,xMax,xPoints(xNumPoints)
-  
-  integer i,j,k
-  double precision Pi
-  double precision r0New
-  double precision xRswitch
-  double precision xDelt,x0,x1,x2
-  
-  
-  Pi = 3.1415926535897932385d0
-  
-  x0 = xMin
-  x1 = xMax
-  k = 1
-  xDelt = (x1-x0)/dble(xNumPoints-1)
+  integer, intent(in) :: xNumPoints
+  double precision, intent(in) :: x1,x2
+  double precision, intent(out) :: xPoints(xNumPoints)
+  integer i
+  double precision xDelt
+  xDelt = (x2-x1)/dble(xNumPoints-1)
   do i = 1,xNumPoints
-     !xPoints(k) = x1*((i-1)*xDelt/(x1-x0))**2 + x0  ! use this for a quadratic grid that concentrates more points near x0.
-     xPoints(k) = (i-1)*xDelt + x0 ! Simple linear grid
-     k = k + 1
+     xPoints(i) = (i-1)*xDelt + x1 ! Simple linear grid
   enddo
-  
-15 format(6(1x,1pd12.5))
-
-end subroutine GridMaker
-
-!----------------------------------------------------------------------------------------------------
-! This subroutine tabulates the integration points for the
-! basis defined by xPoints(xNumPoints) with LegPoints integration points in each section kx.
-!----------------------------------------------------------------------------------------------------
-subroutine xIntegrationPoints(xNumPoints,xPoints,xLeg,LegPoints,xNew)
+end subroutine GridMakerLinear
+!****************************************************************************************************
+subroutine MakeBPData(BPD)
+  use Quadrature
+  use DataStructures
   implicit none
-  integer, intent(in) :: LegPoints,xNumPoints
-  double precision, intent(in) :: xLeg(LegPoints),xPoints(xNumPoints)
-  double precision, intent(out) :: xNew(LegPoints,xNumPoints-1)
-  integer kx,lx
-  double precision ax,bx,xScaledZero
-  double precision xScale(xNumPoints)
   
-  do kx = 1,xNumPoints-1
-     ax = xPoints(kx)
-     bx = xPoints(kx+1)
-     xScale(kx) = 0.5d0*(bx-ax)
-     xScaledZero = 0.5d0*(bx+ax)
-     do lx = 1,LegPoints
-        xNew(lx,kx) = xScale(kx)*xLeg(lx) + xScaledZero
+  type(BPData) BPD
+  integer xDimMin, ix, ixp
+  
+  !Determine the basis dimension for these boundary conditions
+  xDimMin=BPD%xNumPoints+BPD%Order-3
+  BPD%xDim=xDimMin
+  if (BPD%Left .eq. 2) BPD%xDim = BPD%xDim + 1
+  if (BPD%Right .eq. 2) BPD%xDim = BPD%xDim + 1
+  BPD%MatrixDim = BPD%NumChannels*BPD%xDim
+  
+  allocate(BPD%u(LegPoints,BPD%xNumPoints,BPD%xDim),BPD%ux(LegPoints,BPD%xNumPoints,BPD%xDim)) ! allocate memory for basis functions
+  allocate(BPD%kxMin(BPD%xDim,BPD%xDim),BPD%kxMax(BPD%xDim,BPD%xDim)) !
+  allocate(BPD%Pot(BPD%NumChannels,BPD%NumChannels,LegPoints,BPD%xNumPoints-1))
+  
+  call CalcBasisFuncsBP(BPD%Left,BPD%Right,BPD%kl,BPD%kr,BPD%Order,BPD%xPoints,LegPoints,xLeg, &
+       BPD%xDim,BPD%xBounds,BPD%xNumPoints,0,BPD%u)
+  call CalcBasisFuncsBP(BPD%Left,BPD%Right,BPD%kl,BPD%kr,BPD%Order,BPD%xPoints,LegPoints,xLeg, &
+       BPD%xDim,BPD%xBounds,BPD%xNumPoints,1,BPD%ux)
+  
+  ! Determine the bounds for integration of matrix elements
+  do ix = 1,BPD%xDim
+     do ixp = 1,BPD%xDim
+        BPD%kxMin(ixp,ix) = max(BPD%xBounds(ix),BPD%xBounds(ixp))
+        BPD%kxMax(ixp,ix) = min(BPD%xBounds(ix+BPD%Order+1),BPD%xBounds(ixp+BPD%Order+1))-1 !
      enddo
   enddo
-end subroutine xIntegrationPoints
+  
+end subroutine MakeBPData
+!****************************************************************************************************
+  subroutine RProp(BA, BB, BPD, EIG)
+    use DataStructures
+    use GlobalVars
+    implicit none
+    type(BPData), intent(in) :: BPD
+    type(GenEigVal), intent(in) :: EIG
+    type(BoxData), intent(in) :: BA
+    type(BoxData) BB
+    double precision, allocatable :: tempnorm(:,:), temp1(:,:), temp2(:,:), temp0(:,:), ZT(:,:),tempR(:,:)
+    double precision x1, x2
+    integer i,j,beta,betaprime,nch,mch!,betamax
+    integer, allocatable :: ikeep(:)
+    
+    allocate(ikeep(BPD%MatrixDim))
+!    call printmatrix(EIG%eval,BPD%MatrixDim,1,6)
+    j=1
+    ikeep = 0
+    do i = 1, BPD%MatrixDim
+       if(abs(EIG%eval(i)).ge.1e-12) then
+          write(6,"(A,T20,I5,T30,E12.6)") 'eval',i, EIG%eval(i)
+          ikeep(j)=i
+          j = j+1
+       endif
+    enddo
+    BB%betaMax=j-1
+    allocate(BB%NBeta(BB%betaMax),BB%Norm(BB%betaMax,BB%betaMax))
+    allocate(tempnorm(BPD%MatrixDim,BB%betaMax))
+    BB%Norm=0d0
+    tempnorm=0d0
+    BB%Nbeta=0d0
+    do beta=1,BB%betaMax
+       do betaprime=1,BB%betaMax
+          BB%Norm(beta,betaprime)=0d0
+          do i=1,BPD%MatrixDim
+             tempnorm(i,betaprime)=0.0d0
+             do j=1,BPD%MatrixDim
+                tempnorm(i,betaprime) = tempnorm(i,betaprime) + EIG%Lam(i,j)*EIG%evec(j,ikeep(betaprime)) ! 
+             enddo
+             BB%Norm(beta,betaprime) = BB%Norm(beta,betaprime) + EIG%evec(i,ikeep(beta))*tempnorm(i,betaprime) !  
+          enddo
+       enddo
+       BB%Nbeta(beta) = dsqrt(BB%Norm(beta,beta))
+       !write(6,*) 'norm(beta,beta)=',BB%Norm(beta,beta),'Nbeta(',beta,') = ',BB%Nbeta(beta) ! 
+    enddo
+
+    write(6,*) "Norm matrix:"
+    call printmatrix(BB%Norm,BB%betaMax,BB%betaMax,6)
+
+    x1=BPD%xPoints(1)
+    x2=BPD%xPoints(BPD%xNumPoints)
+
+    do beta = 1,BB%betaMax
+       do i = 1,BB%NumOpenL
+          BB%Z(i,beta) = EIG%evec((i-1)*BPD%xDim + 1, ikeep(beta))/BB%Nbeta(beta)! 
+          BB%ZP(i,beta) = EIG%eval(ikeep(beta))*BB%Z(i,beta)
+       enddo
+       do i = 1, BB%NumOpenR
+          BB%Z(i+BB%NumOpenL,beta) = EIG%evec((i-1)*BPD%xDim + BPD%xDim,ikeep(beta))/BB%Nbeta(beta) ! 
+          BB%ZP(i+BB%NumOpenL,beta) = -EIG%eval(ikeep(beta))*BB%Z(i+BB%NumOpenL,beta)
+       enddo
+    enddo
+    
+    allocate(ZT(BB%betaMax,BB%betaMax))
+    write(6,*) "Z:"
+    call printmatrix(BB%Z,BB%betaMax,BB%betaMax,6)
+!    call printmatrix(BB%ZP,BB%betaMax,BB%betaMax,6)
+
+    allocate(temp0(BB%betaMax,BB%betaMax))
+    ZT = BB%Z
+    temp0 = 0d0
+    call dgemm('T','N',BB%betaMax,BB%betaMax,BB%betaMax,1.0d0,ZT,BB%betaMax,BB%Z,BB%betaMax,0.0d0,temp0,BB%betaMax) !
+
+    write(6,*) "Check norm:"
+    call printmatrix(temp0,BB%betaMax,BB%betaMax,6)
+
+    if(BB%NumOpenL.gt.0) then
+       allocate(BB%R11(BB%NumOpenL,BB%NumOpenL),BB%R12(BB%NumOpenL,BB%NumOpenR))
+       allocate(BB%R21(BB%NumOpenR,BB%NumOpenL),BB%R22(BB%NumOpenR,BB%NumOpenR))
+       allocate(temp1(BB%NumOpenL,BB%NumOpenL),temp2(BB%NumOpenR,BB%NumOpenL))
+       BB%R11=0d0
+       BB%R12=0d0
+       BB%R21=0d0
+       BB%R22=0d0
+       BB%RF=0d0
+
+       do beta=1,BB%betaMax
+          do i=1,BB%NumOpenL
+             do j=1,BB%NumOpenL
+                BB%R11(i,j) = BB%R11(i,j) - BB%Z(i,beta)*BB%Z(j,beta)/EIG%eval(ikeep(beta))
+             enddo
+          enddo
+          do i=1,BB%NumOpenL
+             do j=1,BB%NumOpenR
+                BB%R12(i,j) = BB%R12(i,j) - BB%Z(i,beta)*BB%Z(j + BB%NumOpenL,beta)/EIG%eval(ikeep(beta)) ! 
+             enddo
+          enddo
+          do i=1,BB%NumOpenR
+             do j=1,BB%NumOpenL
+                BB%R21(i,j) = BB%R21(i,j) - BB%Z(i + BB%NumOpenL,beta)*BB%Z(j,beta)/EIG%eval(ikeep(beta)) ! 
+             enddo
+          enddo
+          do i=1,BB%NumOpenR
+             do j=1,BB%NumOpenR
+                BB%R22(i,j) = BB%R22(i,j) - BB%Z(i + BB%NumOpenL,beta)*BB%Z(j + BB%NumOpenL,beta)/EIG%eval(ikeep(beta)) ! 
+             enddo
+          enddo
+       enddo
+       !Flip the sign to account for the minus sign convention of Baluja
+       BB%R11 = -BB%R11
+       BB%R12 = -BB%R12
+       BB%R21 = -BB%R21
+       BB%R22 = -BB%R22
+             
+       temp1 = BB%R11 + x1*BA%RF
+       
+       allocate(tempR(BB%NumOpenR,BB%NumOpenR))
+       call SqrMatInv(temp1,BB%NumOpenL)
+       call dgemm('N','N',BB%NumOpenR,BB%NumOpenL,BB%NumOpenL,1.0d0,BB%R21,BB%NumOpenR,temp1,BB%NumOpenL,0.0d0,temp2,BB%NumOpenR) ! 
+       call dgemm('N','N',BB%NumOpenR,BB%NumOpenR,BB%NumOpenL,1.0d0,temp2,BB%NumOpenR,BB%R12,BB%NumOpenL,0.0d0,tempR,BB%NumOpenR) !
+
+       write(6,*) "Final R-matrix:"
+       BB%RF = (BB%R22 - tempR)/x2
+       deallocate(BB%R11,BB%R12,BB%R21,BB%R22)
+       deallocate(temp1,temp2)
+    else
+       temp0 = BB%ZP
+       call SqrMatInv(temp0,BB%betaMax)
+       call dgemm('N','N',BB%betaMax,BB%betaMax,BB%betaMax,1.0d0,BB%Z,BB%betaMax,temp0,BB%betaMax,0.0d0,BB%RF,BB%betaMax) ! 
+    end if
+    call printmatrix(BB%RF,BB%NumOpenR,BB%NumOpenR,6)
+
+    deallocate(temp0)
+
+    deallocate(ikeep)
+    deallocate(tempnorm)
+    deallocate(BB%NBeta,BB%Norm)
+    deallocate(ZT)
+  end subroutine RProp
+
+  
+!****************************************************************************************************
+  subroutine BoxMatch(BA, BB, BPD, EIG)
+    use DataStructures
+    use GlobalVars
+    implicit none
+    type(BPData), intent(in) :: BPD
+    type(GenEigVal), intent(in) :: EIG
+    type(BoxData), intent(in) :: BA
+    type(BoxData) BB
+    double precision, allocatable :: tempnorm(:,:), temp1(:,:), temp2(:,:), temp0(:,:), ZT(:,:),tempR(:,:)
+    double precision x1, x2
+    integer i,j,beta,betaprime,nch,mch!,betamax
+    integer, allocatable :: ikeep(:)
+    
+    allocate(ikeep(BPD%MatrixDim))
+!    call printmatrix(EIG%eval,BPD%MatrixDim,1,6)
+    j=1
+    ikeep = 0
+    do i = 1, BPD%MatrixDim
+       if(abs(EIG%eval(i)).ge.1e-12) then
+          write(6,"(A,T20,I5,T30,E12.6)") 'eval',i, EIG%eval(i)
+          ikeep(j)=i
+          j = j+1
+       endif
+    enddo
+    BB%betaMax=j-1
+    allocate(BB%NBeta(BB%betaMax),BB%Norm(BB%betaMax,BB%betaMax))
+    allocate(tempnorm(BPD%MatrixDim,BB%betaMax))
+    BB%Norm=0d0
+    tempnorm=0d0
+    BB%Nbeta=0d0
+    do beta=1,BB%betaMax
+       do betaprime=1,BB%betaMax
+          BB%Norm(beta,betaprime)=0d0
+          do i=1,BPD%MatrixDim
+             tempnorm(i,betaprime)=0.0d0
+             do j=1,BPD%MatrixDim
+                tempnorm(i,betaprime) = tempnorm(i,betaprime) + EIG%Lam(i,j)*EIG%evec(j,ikeep(betaprime)) ! 
+             enddo
+             BB%Norm(beta,betaprime) = BB%Norm(beta,betaprime) + EIG%evec(i,ikeep(beta))*tempnorm(i,betaprime) !  
+          enddo
+       enddo
+       BB%Nbeta(beta) = dsqrt(BB%Norm(beta,beta))
+       !write(6,*) 'norm(beta,beta)=',BB%Norm(beta,beta),'Nbeta(',beta,') = ',BB%Nbeta(beta) ! 
+    enddo
+
+    write(6,*) "Norm matrix:"
+    call printmatrix(BB%Norm,BB%betaMax,BB%betaMax,6)
+
+    x1=BPD%xPoints(1)
+    x2=BPD%xPoints(BPD%xNumPoints)
+
+    do beta = 1,BB%betaMax
+       do i = 1,BB%NumOpenL
+          BB%Z(i,beta) = EIG%evec((i-1)*BPD%xDim + 1, ikeep(beta))/BB%Nbeta(beta)! 
+          BB%ZP(i,beta) = EIG%eval(ikeep(beta))*BB%Z(i,beta)
+       enddo
+       do i = 1, BB%NumOpenR
+          BB%Z(i+BB%NumOpenL,beta) = EIG%evec((i-1)*BPD%xDim + BPD%xDim,ikeep(beta))/BB%Nbeta(beta) ! 
+          BB%ZP(i+BB%NumOpenL,beta) = -EIG%eval(ikeep(beta))*BB%Z(i+BB%NumOpenL,beta)
+       enddo
+    enddo
+    
+    allocate(ZT(BB%betaMax,BB%betaMax))
+    write(6,*) "Z:"
+    call printmatrix(BB%Z,BB%betaMax,BB%betaMax,6)
+!    call printmatrix(BB%ZP,BB%betaMax,BB%betaMax,6)
+
+    allocate(temp0(BB%betaMax,BB%betaMax))
+    ZT = BB%Z
+    temp0 = 0d0
+    call dgemm('T','N',BB%betaMax,BB%betaMax,BB%betaMax,1.0d0,ZT,BB%betaMax,BB%Z,BB%betaMax,0.0d0,temp0,BB%betaMax) !
+
+    write(6,*) "Check norm:"
+    call printmatrix(temp0,BB%betaMax,BB%betaMax,6)
+
+    if(BB%NumOpenL.gt.0) then
+       allocate(BB%R11(BB%NumOpenL,BB%NumOpenL),BB%R12(BB%NumOpenL,BB%NumOpenR))
+       allocate(BB%R21(BB%NumOpenR,BB%NumOpenL),BB%R22(BB%NumOpenR,BB%NumOpenR))
+       allocate(temp1(BB%NumOpenL,BB%NumOpenL),temp2(BB%NumOpenR,BB%NumOpenL))
+       BB%R11=0d0
+       BB%R12=0d0
+       BB%R21=0d0
+       BB%R22=0d0
+       BB%RF=0d0
+
+       do beta=1,BB%betaMax
+          do i=1,BB%NumOpenL
+             do j=1,BB%NumOpenL
+                BB%R11(i,j) = BB%R11(i,j) - BB%Z(i,beta)*BB%Z(j,beta)/EIG%eval(ikeep(beta))
+             enddo
+          enddo
+          do i=1,BB%NumOpenL
+             do j=1,BB%NumOpenR
+                BB%R12(i,j) = BB%R12(i,j) + BB%Z(i,beta)*BB%Z(j + BB%NumOpenL,beta)/EIG%eval(ikeep(beta)) ! 
+             enddo
+          enddo
+          do i=1,BB%NumOpenR
+             do j=1,BB%NumOpenL
+                BB%R21(i,j) = BB%R21(i,j) - BB%Z(i + BB%NumOpenL,beta)*BB%Z(j,beta)/EIG%eval(ikeep(beta)) ! 
+             enddo
+          enddo
+          do i=1,BB%NumOpenR
+             do j=1,BB%NumOpenR
+                BB%R22(i,j) = BB%R22(i,j) + BB%Z(i + BB%NumOpenL,beta)*BB%Z(j + BB%NumOpenL,beta)/EIG%eval(ikeep(beta)) ! 
+             enddo
+          enddo
+       enddo
+       !Flip the sign to account for the minus sign convention of Baluja
+!!$       BB%R11 = -BB%R11
+!!$       BB%R12 = -BB%R12
+!!$       BB%R21 = -BB%R21
+!!$       BB%R22 = -BB%R22
+             
+       temp1 = BB%R11 + x1*BA%RF
+       
+       allocate(tempR(BB%NumOpenR,BB%NumOpenR))
+       call SqrMatInv(temp1,BB%NumOpenL)
+       call dgemm('N','N',BB%NumOpenR,BB%NumOpenL,BB%NumOpenL,1.0d0,BB%R21,BB%NumOpenR,temp1,BB%NumOpenL,0.0d0,temp2,BB%NumOpenR) ! 
+       call dgemm('N','N',BB%NumOpenR,BB%NumOpenR,BB%NumOpenL,1.0d0,temp2,BB%NumOpenR,BB%R12,BB%NumOpenL,0.0d0,tempR,BB%NumOpenR) !
+
+       write(6,*) "Final R-matrix:"
+       BB%RF = (BB%R22 - tempR)/x2
+       deallocate(BB%R11,BB%R12,BB%R21,BB%R22)
+       deallocate(temp1,temp2)
+    else
+       temp0 = BB%ZP
+       call SqrMatInv(temp0,BB%betaMax)
+       call dgemm('N','N',BB%betaMax,BB%betaMax,BB%betaMax,1.0d0,BB%Z,BB%betaMax,temp0,BB%betaMax,0.0d0,BB%RF,BB%betaMax) ! 
+    end if
+    call printmatrix(BB%RF,BB%NumOpenR,BB%NumOpenR,6)
+
+    deallocate(temp0)
+
+    deallocate(ikeep)
+    deallocate(tempnorm)
+    deallocate(BB%NBeta,BB%Norm)
+    deallocate(ZT)
+  end subroutine BoxMatch
+
+  
