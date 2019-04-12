@@ -1,3 +1,127 @@
+!cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+! this subroutine calculates the hyerpspehrical besselfunctions multiplied by x**alpha
+!     rj = (x**alpha*hypj)
+!     rjp = alpha*x**(alpha-1)*hypj + x**alpha*hypjp
+! 
+      subroutine hyperrjry(d,alpha,lam,x,rj,ry,rjp,ryp)
+      implicit none
+      integer d,df
+      double precision, external :: mygamma
+      double precision lam, x, j, y, jp, yp,gam,halfd,alpha
+      double precision hypj,hypy,hypjp,hypyp
+      double precision rj,rjp, ry, ryp
+      double precision order,prefact
+      halfd=0.5d0*d
+      order = halfd + lam - 1d0
+      call doubfact(d-4,df)
+      call bessjy(x,order,j,y,jp,yp)
+      prefact = mygamma(halfd-1.d0)*2**(halfd-2d0)/df
+      hypj = prefact*j*x**(-halfd+1d0)
+      hypy = prefact*y*x**(-halfd+1d0)
+      hypjp = prefact*x**(-halfd+1d0)*(jp - (halfd - 1)*j/x)
+      hypyp = prefact*x**(-halfd+1d0)*(yp - (halfd - 1)*y/x)
+
+      rj = x**alpha*hypj
+      rjp = x**alpha*(alpha*hypj/x + hypjp)
+      ry = x**alpha*hypy
+      ryp = x**alpha*(alpha*hypy/x + hypyp)
+      
+      end
+!cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+! This is a subroutine that returns the hyperspherical bessel functions as defined in Avery
+      subroutine hyperjy(d,lam,x,hypj,hypy,hypjp,hypyp)
+      implicit none
+      integer d,df
+      double precision, external :: mygamma
+      double precision lam, x, j, y, jp, yp,gam,halfd
+      double precision hypj,hypy,hypjp,hypyp
+      double precision order,prefact
+      halfd=0.5d0*d
+      order = halfd + lam - 1d0
+      call doubfact(d-4,df)
+      call bessjy(x,order,j,y,jp,yp)
+      prefact = mygamma(halfd-1.d0)*2**(halfd-2d0)/df
+      hypj = prefact*j*x**(-halfd+1d0)
+      hypy = prefact*y*x**(-halfd+1d0)
+      hypjp = prefact*x**(-halfd+1d0)*(jp - (halfd - 1)*j/x)
+      hypyp = prefact*x**(-halfd+1d0)*(yp - (halfd - 1)*y/x)
+      end
+!cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+! This is a subroutine that returns the hyperspherical bessel functions as defined in Avery
+      subroutine hyperrirk(d,alpha,lam,x,rhypi,rhypk,rhypip,rhypkp)
+      implicit none
+      integer d,df
+      double precision, external :: mygamma
+      double precision lam, x, i, k, ip, kp,gam,halfd,alpha
+      double precision hypi,hypk,hypip,hypkp
+      double precision rhypi,rhypk,rhypip,rhypkp
+      double precision order,prefact
+      double precision ai,bk,aip,bkp,ldi,ldk
+      halfd=0.5d0*d
+      order = halfd + lam - 1d0
+      call doubfact(d-4,df)
+      !call bessik(x,order,i,k,ip,kp)
+!     Inu(x) = exp(x) * alpha(x)
+!     Knu(x) = exp(-x) * beta(x)
+!     This routine returns alpha, beta, alpha', beta', I'/I, and K'/K
+      call MyScaledBessIK(x, order, ai, bk, aip, bkp, ldi,ldk)
+      
+      prefact = mygamma(halfd-1.d0)*2**(halfd-2d0)/df
+      hypi = prefact*dexp(x)*ai*x**(-halfd+1d0)
+      hypk = prefact*dexp(-x)*bk*x**(-halfd+1d0)
+      hypip = prefact*0.5d0*dexp(x)*x**(-halfd)*(2d0*x*aip + ai*(-d+2*x+2))
+      hypkp = prefact*0.5d0*dexp(-x)*x**(-halfd)*(2d0*x*bkp - bk*(d+2*x-2))
+
+      rhypi = x**alpha*hypi
+      rhypip = x**alpha*(alpha*hypi/x + hypip)
+      rhypk = x**alpha*hypk
+      rhypkp = x**alpha*(alpha*hypk/x + hypkp)
+      
+      end
+!cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc      
+!cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+! This is a subroutine that returns the modified hyperspherical bessel functions.
+      subroutine hyperik(d,lam,x,hypi,hypk,hypip,hypkp)
+      implicit none
+      integer d,df
+      double precision, external :: mygamma
+      double precision lam, x, i, k, ip, kp,gam,halfd
+      double precision hypi,hypk,hypip,hypkp
+      double precision order,prefact
+      double precision ai,bk,aip,bkp,ldi,ldk
+      halfd=0.5d0*d
+      order = halfd + lam - 1d0
+      call doubfact(d-4,df)
+      !call bessik(x,order,i,k,ip,kp)
+!     Inu(x) = exp(x) * alpha(x)
+!     Knu(x) = exp(-x) * beta(x)
+!     This routine returns alpha, beta, alpha', beta', I'/I, and K'/K
+      call MyScaledBessIK(x, order, ai, bk, aip, bkp, ldi,ldk)
+      
+      prefact = mygamma(halfd-1.d0)*2**(halfd-2d0)/df
+      hypi = prefact * dexp(x)*ai * x**(-halfd+1d0)
+      hypk = prefact * dexp(-x)*bk * x**(-halfd+1d0)
+      hypip = prefact*0.5d0*dexp(x)*x**(-halfd)* (2d0*x*aip + ai*(-d+2*x+2))
+      hypkp = prefact*0.5d0*dexp(-x)*x**(-halfd)*(2d0*x*bkp - bk*(d+2*x-2))
+
+      end
+!cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc      
+      subroutine doubfact(n,df)
+      implicit none
+      integer n,m,df
+
+      df=1
+      m=n
+      
+      do while (m.gt.1)
+         df=df*m
+         write(6,*) m, df
+         m=m-2
+      end do
+      
+      return
+      end
+!cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc      
       SUBROUTINE sphbesjy(n,x,sj,sy,sjp,syp) ! change norm
 !NB:  This is NOT the spherical bessel function jn(x), instead it is x*jn(x), the Riccati function
 !leaving a factor of sqrt(x) in the numerator of the prefactor
@@ -59,6 +183,9 @@ c$$$  sjp=factor*rip+si/(2.d0*x)
 c$$$  syp=factor*rkp+sk/(2.d0*x)
       
       call MyScaledBessIK(x, order, ri, rk, rip, rkp, ldi,ldk)
+!     Inu(x) = exp(x) * alpha(x)
+!     Knu(x) = exp(-x) * beta(x)
+!     This routine returns alpha, beta, alpha', beta', I'/I, and K'/K
       factor=RT2OPI*sqrt(x)
       si = ri*factor*exp(x-xscale)
       sk = rk*factor*exp(xscale-x)
@@ -293,7 +420,7 @@ c$$$  syp=factor*rkp+sk/(2.d0*x)
       End
 !cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
       subroutine MyScaledBessIK(x, xnu, alpha, beta, alphap, betap, ldi,ldk)
-!     returns the modified bessel functions Inu and Knu multiplied by exp(-x) and exp(x) respectively.  Uses asymptotic forms for large x>10.0
+!     returns the modified bessel functions Inu and Knu multiplied by exp(-x) and exp(x) respectively.  Uses asymptotic forms for large x>15.0
 !     log derivatives of the bessel functions themselves returned in ldk and ldi
 !
 !     Inu(x) = exp(x) * alpha(x)
