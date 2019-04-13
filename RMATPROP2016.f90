@@ -88,7 +88,7 @@ contains
     
     close(unit=7)
     EffDim = NumParticles*SpatialDim - SpatialDim
-    AlphaFactor = (EffDim-1d0)/2d0
+    AlphaFactor = 0d0!(EffDim-1d0)/2d0
     
     If (NumParticles.eq.2) then
        reducedmass = mass(1)*mass(2)/(mass(1)+mass(2))
@@ -129,8 +129,6 @@ module DataStructures
   end type BoxData
 end module DataStructures
 !****************************************************************************************************
-!****************************************************************************************************
-
 !  module MatrixElements
 !contains
 
@@ -202,12 +200,12 @@ end module DataStructures
 
     if(BPD%Right.eq.2) then
        do mch = 1, BPD%NumChannels
-          EIG%Lam( (mch-1)*BPD%xDim + BPD%xDim, (mch-1)*BPD%xDim + BPD%xDim ) = 1d0!x2**(EffDim-1d0-2d0*AlphaFactor)
+          EIG%Lam( (mch-1)*BPD%xDim + BPD%xDim, (mch-1)*BPD%xDim + BPD%xDim ) = x2**(EffDim-1d0-2d0*AlphaFactor)
        enddo
     endif
     if(BPD%Left.eq.2) then
        do mch = 1, NumChannels
-          EIG%Lam((mch-1)*BPD%xDim + 1,(mch-1)*BPD%xDim + 1) = 1d0!x1**(EffDim-1d0-2d0*AlphaFactor)
+          EIG%Lam((mch-1)*BPD%xDim + 1,(mch-1)*BPD%xDim + 1) = -x1**(EffDim-1d0-2d0*AlphaFactor)
        enddo
     endif
 
