@@ -11,15 +11,16 @@
       double precision hypj,hypy,hypjp,hypyp
       double precision rj,rjp, ry, ryp
       double precision order,prefact
-      halfd=0.5d0*d
+      halfd=0.5d0*dble(d)
       order = halfd + lam - 1d0
       call doubfact(d-4,df)
+      !write(6,*) "order=",order, halfd, lam, d
       call bessjy(x,order,j,y,jp,yp)
       prefact = mygamma(halfd-1.d0)*2**(halfd-2d0)/df
       hypj = prefact*j*x**(-halfd+1d0)
       hypy = prefact*y*x**(-halfd+1d0)
-      hypjp = prefact*x**(-halfd+1d0)*(jp - (halfd - 1)*j/x)
-      hypyp = prefact*x**(-halfd+1d0)*(yp - (halfd - 1)*y/x)
+      hypjp = prefact*x**(-halfd+1d0)*(jp - (halfd - 1d0)*j/x)
+      hypyp = prefact*x**(-halfd+1d0)*(yp - (halfd - 1d0)*y/x)
 
       rj = x**alpha*hypj
       rjp = x**alpha*(alpha*hypj/x + hypjp)
@@ -126,9 +127,9 @@
 !NB:  This is NOT the spherical bessel function jn(x), instead it is x*jn(x), the Riccati function
 !leaving a factor of sqrt(x) in the numerator of the prefactor
       INTEGER n
-      REAL*8 sj,sjp,sy,syp,x
+      DOUBLE PRECISION sj,sjp,sy,syp,x
 !U    USES bessjy
-      REAL*8 factor,order,rj,rjp,ry,ryp,RTPIO2
+      DOUBLE PRECISION factor,order,rj,rjp,ry,ryp,RTPIO2
       PARAMETER (RTPIO2=1.25331413731550d0) 
       if(n.lt.0.d0.or.x.le.0.d0) write(6,*) 'bad arguments in sphbesjy'
       order=n+0.5d0
@@ -145,8 +146,8 @@
 !NB:  This is NOT the spherical bessel function kn(x), instead it is x*kn(x),
 !     leaving a factor of sqrt(x) in the numerator of the prefactor
       INTEGER n
-      REAL*8 si,sip,sk,skp,x,ri,rk,rip,rkp,ldi,ldk
-      REAL*8 factor,order,RTPIO2
+      DOUBLE PRECISION si,sip,sk,skp,x,ri,rk,rip,rkp,ldi,ldk
+      DOUBLE PRECISION factor,order,RTPIO2
       PARAMETER (RTPIO2=1.25331413731550d0)
       PARAMETER (RT2OPI=0.7978845608028654d0)
       if(n.lt.0.d0.or.x.le.0.d0) write(6,*) 'bad arguments in sphbesik'
@@ -167,9 +168,9 @@
 !     inu and knu are multiplied by exp(-xscale) and exp(xscale), respectively.
 !     xscale is a constant number that must be chosen at the beginning of a scattering calcualtion.
       INTEGER n
-      REAL*8 si,sip,sk,skp,x,ri,rk,rip,rkp,ldi,ldk,xscale
-      REAL*8 factor,order,RTPIO2
-      real*8 RT2OPI,bigk, bigi, bigkp, bigip
+      DOUBLE PRECISION si,sip,sk,skp,x,ri,rk,rip,rkp,ldi,ldk,xscale
+      DOUBLE PRECISION factor,order,RTPIO2
+      double precision RT2OPI,bigk, bigi, bigkp, bigip
       PARAMETER (RTPIO2=1.25331413731550d0)
       PARAMETER (RT2OPI=0.7978845608028654d0)
       if(n.lt.0.d0.or.x.le.0.d0) write(6,*) 'bad arguments in sphbesik, (n, x) = ', n, x
@@ -200,7 +201,7 @@ c$$$  syp=factor*rkp+sk/(2.d0*x)
 !cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
       SUBROUTINE bessjy(x,xnu,rj,ry,rjp,ryp)
       INTEGER MAXIT
-      REAL*8 rj,rjp,ry,ryp,x,xnu,XMIN
+      DOUBLE PRECISION rj,rjp,ry,ryp,x,xnu,XMIN
       DOUBLE PRECISION EPS,FPMIN,PI
       PARAMETER (EPS=1.d-16,FPMIN=1.d-30,MAXIT=10000,XMIN=2.d0,PI=3.141592653589793d0)
 !CU    USES beschb
@@ -209,7 +210,7 @@ c$$$  syp=factor*rkp+sk/(2.d0*x)
       DOUBLE PRECISION f,fact,fact2,fact3,ff,gam,gam1,gam2,gammi,gampl,h,p,pimu,pimu2,q
       DOUBLE PRECISION r,rjl,rjl1,rjmu,rjp1,rjpl,rjtemp,ry1,rymu,rymup,rytemp,sum,sum1
       DOUBLE PRECISION temp,w,x2,xi,xi2,xmu,xmu2
-      if(x.le.0.d0.or.xnu.lt.0.d0)write(6,*) 'bad arguments in bessjy'
+      if(x.le.0.d0.or.xnu.lt.0.d0) write(6,*) 'bad arguments in bessjy', x, xnu
       if(x.lt.XMIN)then
         nl=int(xnu+.5d0)
       else
@@ -366,7 +367,7 @@ c$$$  syp=factor*rkp+sk/(2.d0*x)
       DOUBLE PRECISION gam1,gam2,gammi,gampl,x
       PARAMETER (NUSE1=7,NUSE2=8)
 !CU    USES chebev
-      REAL*8 xx,c1(7),c2(8),chebev
+      DOUBLE PRECISION xx,c1(7),c2(8),chebev
       SAVE c1,c2
       DATA c1/-1.142022680371172d0,6.516511267076d-3,3.08709017308d-4,-3.470626964d-6,6.943764d-9,3.6780d-11,-1.36d-13/
       DATA c2/1.843740587300906d0,-.076852840844786d0,1.271927136655d-3,-4.971736704d-6,-3.3126120d-8,2.42310d-10,-1.70d-13,-1.d-15/
@@ -380,9 +381,9 @@ c$$$  syp=factor*rkp+sk/(2.d0*x)
 !cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
       FUNCTION chebev(a,b,c,m,x)
       INTEGER m
-      REAL*8 chebev,a,b,x,c(m)
+      DOUBLE PRECISION chebev,a,b,x,c(m)
       INTEGER j
-      REAL*8 d,dd,sv,y,y2
+      DOUBLE PRECISION d,dd,sv,y,y2
       if ((x-a)*(x-b).gt.0.d0) write(6,*)'x not in range in chebev'
       d=0.d0
       dd=0.d0
@@ -401,8 +402,8 @@ c$$$  syp=factor*rkp+sk/(2.d0*x)
       Subroutine sphbessel(rr,energy,LL,xmass,b)
 !      use modb
       implicit none
-      Real*8 b(4),prefac,ek,xmass,energy,xx,rr
-      Real*8 sj,sy,sjp,syp,pi
+      double precision b(4),prefac,ek,xmass,energy,xx,rr
+      double precision sj,sy,sjp,syp,pi
       Integer LL
       pi=dacos(-1d0)
       ek = Dsqrt(2.d0*xmass*energy)

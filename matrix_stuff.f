@@ -32,14 +32,14 @@
       lwork = -1
       allocate(work(1))
       call dggev('N','V',N,GL,LDG,LL,LDL,alphar,alphai,beta,VL,1,evec,N,work,lwork,info)
-
+      !write(6,*) "info = ", info, int(work(1))
       alphar=0d0
       alphai=0d0
       beta=0d0
       evec=0d0
       eval=0d0
       
-      lwork=work(1)
+      lwork=2*int(work(1))
       deallocate(work)
       allocate(work(lwork))
       GL=G

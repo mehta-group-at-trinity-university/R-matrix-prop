@@ -42,7 +42,7 @@ module Quadrature
       enddo
       close(unit=7)
       return
-    end subroutine GetGaussFactors
+    End subroutine GetGaussFactors
 
   end module Quadrature
   !****************************************************************************************************
@@ -63,15 +63,13 @@ module GlobalVars
 !****************************************************************************************************
 contains
   subroutine ReadGlobal
-!    use DataStructures
-    !    use GlobalVars
     use Quadrature
     implicit none
     integer n
     ! Be sure to match the format of the input file to the format of the read statements below
     open(unit=7,file=InputFile(1:index(InputFile,' ')-1),action='read')
     read(7,*)
-    read(7,*) NumParticles, NumChannels, SpatialDim, NumAllChan
+    read(7,*) NumParticles, NumChannels, SpatialDim, NumAllChan, Order
     allocate(mass(NumParticles))
     read(7,*)
     read(7,*)
@@ -88,7 +86,7 @@ contains
     
     close(unit=7)
     EffDim = NumParticles*SpatialDim - SpatialDim
-    AlphaFactor = 0d0!(EffDim-1d0)/2d0
+    AlphaFactor = (EffDim-1d0)/2d0
     
     If (NumParticles.eq.2) then
        reducedmass = mass(1)*mass(2)/(mass(1)+mass(2))
@@ -96,7 +94,7 @@ contains
        write(6,*) "Reduced mass not set. Must set reduced mass"
        stop
     end If
-    Order = 5
+
     
   end subroutine ReadGlobal
   !****************************************************************************************************
@@ -109,8 +107,8 @@ module DataStructures
   type BPData !This data type contains the array of basis functions and potential matrix
      integer xNumPoints, xDim, Left, Right, Order, NumChannels, MatrixDim
      double precision, allocatable :: u(:,:,:),ux(:,:,:),xPoints(:),x(:,:)
-     double precision, allocatable :: Pot(:,:,:,:)
-     double precision kl, kr
+     double precision, allocatable :: Pot(:,:,:,:),lam(:)
+     double precision kl, kr, xl,xr
      integer, allocatable :: xBounds(:), kxMin(:,:), kxMax(:,:)
   end type BPData
   !****************************************************************************************************
@@ -120,18 +118,129 @@ module DataStructures
   end type GenEigVal
   !****************************************************************************************************
   type BoxData
-     integer NumOpenL, NumOpenR, NumOpen, betaMax
+     integer NumOpenL, NumOpenR, betaMax
      double precision xL, xR
      double precision, allocatable :: Z(:,:), ZP(:,:), NBeta(:), Norm(:,:)
-     double precision, allocatable :: b(:), bf(:), Zf(:,:)
-     double precision, allocatable :: RF(:,:)!, T(:,:), S(:,:), K(:,:)
-     double precision, allocatable :: R11(:,:), R12(:,:), R21(:,:), R22(:,:)
+     double precision, allocatable :: b(:), bf(:), Zf(:,:), Zfp(:,:)
+     double precision, allocatable :: RF(:,:),K(:,:)
+     
   end type BoxData
+
+contains
+  !****************************************************************************************************
+  subroutine AllocateEIG(EIG)
+    implicit none
+    type(GenEigVal) :: EIG
+    allocate(EIG%Gam(EIG%MatrixDim,EIG%MatrixDim),EIG%Lam(EIG%MatrixDim,EIG%MatrixDim))
+    allocate(EIG%eval(EIG%MatrixDim),EIG%evec(EIG%MatrixDim,EIG%MatrixDim))
+    
+  end subroutine AllocateEIG
+  !****************************************************************************************************
+  subroutine DeAllocate(EIG)
+    implicit none
+    type(GenEigVal) :: EIG
+    deallocate(EIG%Gam,EIG%Lam,EIG%eval,EIG%evec)
+    
+  end subroutine DeAllocate
+  !****************************************************************************************************
+  subroutine AllocateBox(B)
+    type(BoxData) :: B
+    
+    B%betaMax = B%NumOpenR + B%NumOpenL
+    
+    allocate(B%Z(B%betaMax,B%betaMax),B%ZP(B%betaMax,B%betaMax))
+    allocate(B%b(B%betaMax))
+    allocate(B%NBeta(B%betaMax))
+    allocate(B%Norm(B%betaMax,B%betaMax))
+    allocate(B%RF(B%NumOpenR,B%NumOpenR),B%Zf(B%NumOpenR,B%NumOpenR),B%Zfp(B%NumOpenR,B%NumOpenR))
+    allocate(B%bf(B%NumOpenR))
+    allocate(B%K(B%NumOpenR,B%NumOpenR))
+  end subroutine AllocateBox
+  !****************************************************************************************************
+  subroutine DeAllocateBox(B)
+    type(BoxData) :: B
+
+    deallocate(B%Z,B%ZP)
+    deallocate(B%b)
+    deallocate(B%NBeta,B%Norm,B%RF,B%Zf,B%bf,B%K,B%Zfp)
+  end subroutine DeAllocateBox
+  !****************************************************************************************************
+  subroutine AllocateBPD(BPD)
+    use Quadrature
+    implicit none
+    type(BPData) BPD
+    integer xDimMin
+    !Determine the basis dimension for these boundary conditions
+    xDimMin=BPD%xNumPoints+BPD%Order-3
+    BPD%xDim=xDimMin
+    if (BPD%Left .eq. 2) BPD%xDim = BPD%xDim + 1
+    if (BPD%Right .eq. 2) BPD%xDim = BPD%xDim + 1
+    BPD%MatrixDim = BPD%NumChannels*BPD%xDim
+    
+    allocate(BPD%xPoints(BPD%xNumPoints))
+    allocate(BPD%xBounds(BPD%xNumPoints + 2*BPD%Order))   ! allocate xBounds before calling CalcBasisFuncs
+    allocate(BPD%x(LegPoints,BPD%xNumPoints-1))
+    
+    allocate(BPD%u(LegPoints,BPD%xNumPoints,BPD%xDim),BPD%ux(LegPoints,BPD%xNumPoints,BPD%xDim)) ! allocate memory for basis functions
+    allocate(BPD%kxMin(BPD%xDim,BPD%xDim),BPD%kxMax(BPD%xDim,BPD%xDim)) !
+    allocate(BPD%Pot(BPD%NumChannels,BPD%NumChannels,LegPoints,BPD%xNumPoints-1))
+
+    allocate(BPD%lam(BPD%NumChannels))
+
+    BPD%lam=0.d0
+    
+  end subroutine AllocateBPD
+  !****************************************************************************************************
+  subroutine DeAllocateBPD(BPD)
+    implicit none
+    type(BPData) BPD
+    deallocate(BPD%xPoints,BPD%xBounds,BPD%x,BPD%u,BPD%ux,BPD%kxMin,BPD%kxMax,BPD%Pot,BPD%lam)
+  end subroutine DeAllocateBPD
+  !****************************************************************************************************
+  subroutine Makebasis(BPD)
+    use Quadrature
+    implicit none
+    
+    type(BPData) BPD
+    integer ix, ixp
+       
+    call CalcBasisFuncsBP(BPD%Left,BPD%Right,BPD%kl,BPD%kr,BPD%Order,BPD%xPoints,LegPoints,xLeg, &
+         BPD%xDim,BPD%xBounds,BPD%xNumPoints,0,BPD%u)
+    call CalcBasisFuncsBP(BPD%Left,BPD%Right,BPD%kl,BPD%kr,BPD%Order,BPD%xPoints,LegPoints,xLeg, &
+         BPD%xDim,BPD%xBounds,BPD%xNumPoints,1,BPD%ux)
+    
+    ! Determine the bounds for integration of matrix elements
+    do ix = 1,BPD%xDim
+       do ixp = 1,BPD%xDim
+          BPD%kxMin(ixp,ix) = max(BPD%xBounds(ix),BPD%xBounds(ixp))
+          BPD%kxMax(ixp,ix) = min(BPD%xBounds(ix+BPD%Order+1),BPD%xBounds(ixp+BPD%Order+1))-1 !
+       enddo
+    enddo
+    
+  end subroutine Makebasis
+  !****************************************************************************************************
+  subroutine checkpot(BPD,file)
+    use Quadrature
+    implicit none
+    integer file,mch,nch,lx,kx
+    type(BPData) BPD
+
+    do mch = 1,BPD%NumChannels
+       do nch = 1,mch
+          do kx = 1, BPD%xNumPoints-1
+             do lx = 1,LegPoints
+                write(file,*) BPD%x(lx,kx), BPD%Pot(mch,nch,lx,kx)
+             enddo
+          enddo
+          write(file,*)
+       enddo
+       write(file,*)
+    enddo
+    
+  end subroutine checkpot
+  
 end module DataStructures
 !****************************************************************************************************
-!  module MatrixElements
-!contains
-
   subroutine CalcGamLam(BPD,EIG)
     use DataStructures
     use Quadrature
@@ -140,14 +249,9 @@ end module DataStructures
     type(BPData) :: BPD
     type(GenEigVal) :: EIG
     integer ix,ixp,lx,kx,mch,nch
-    double precision a, ax, bx, xIntScale(BPD%xNumPoints), TempG, xScaledZero, x1, x2
-
-    
-    x1=BPD%xPoints(1)
-    x2=BPD%xPoints(BPD%xNumPoints)
-
-    allocate(EIG%Gam(BPD%MatrixDim,BPD%MatrixDim))
-    allocate(EIG%Lam(BPD%MatrixDim,BPD%MatrixDim))
+    double precision a, ax, bx, xIntScale(BPD%xNumPoints), TempG, xScaledZero
+    EIG%Gam=0d0
+    EIG%Lam=0d0
     !Calculate the Gamma Matrix elements
     do ix = 1,BPD%xDim
        do ixp = max(1,ix-BPD%Order),min(BPD%xDim,ix+BPD%Order)
@@ -159,7 +263,7 @@ end module DataStructures
                 xIntScale(kx) = 0.5d0*(bx-ax)
                 xScaledZero = 0.5d0*(bx+ax)
                 TempG = 0.0d0
-                ! Ultimately, these matrix elements should be calculated elsewhere since they won't change from sector to sector.
+                ! Ultimately, these matrix elements should be calculated elsewhere since they won't change from sector to sector. (for all middle boxes)
                 do lx = 1,LegPoints
                    a = wLeg(lx)*xIntScale(kx)*BPD%x(lx,kx)**(EffDim-1d0-2d0*AlphaFactor)
                    
@@ -200,18 +304,83 @@ end module DataStructures
 
     if(BPD%Right.eq.2) then
        do mch = 1, BPD%NumChannels
-          EIG%Lam( (mch-1)*BPD%xDim + BPD%xDim, (mch-1)*BPD%xDim + BPD%xDim ) = x2**(EffDim-1d0-2d0*AlphaFactor)
+          EIG%Lam( (mch-1)*BPD%xDim + BPD%xDim, (mch-1)*BPD%xDim + BPD%xDim ) = BPD%xr**(EffDim-1d0-2d0*AlphaFactor)
        enddo
     endif
     if(BPD%Left.eq.2) then
        do mch = 1, NumChannels
-          EIG%Lam((mch-1)*BPD%xDim + 1,(mch-1)*BPD%xDim + 1) = -x1**(EffDim-1d0-2d0*AlphaFactor)
+          EIG%Lam((mch-1)*BPD%xDim + 1,(mch-1)*BPD%xDim + 1) = BPD%xl**(EffDim-1d0-2d0*AlphaFactor)
        enddo
     endif
 
   end subroutine CalcGamLam
   !****************************************************************************************************
-  !end module MatrixElements
+  module Scattering
+    use GlobalVars
+    use DataStructures
+  contains
+    subroutine CalcK(B,BPD,mu,d,EE,Eth)
+      implicit none
+      type(BoxData) :: B
+      type(BPData) :: BPD
+      double precision mu, EE,rm,d
+      double precision, allocatable :: s(:),c(:),sp(:),cp(:)
+      double precision, allocatable :: Imat(:,:),Jmat(:,:)
+      double precision rhypj,rhypy,rhypjp,rhypyp      
+      double precision k(BPD%NumChannels),Eth(BPD%NumChannels)
+      integer i,j,no,nw,nc,beta
+
+      rm=BPD%xr
+      no=0
+      nw=0
+      nc=0
+      do i = 1,BPD%NumChannels
+         if (EE.ge.Eth(i)) then
+            k(i) = dsqrt(2d0*mu*(EE)-Eth(i)) ! k is real
+            no=no+1
+         else
+            k(i) = dsqrt(2d0*mu*(Eth(i)-EE)) ! k->kappa, kappa is real
+            if( (k(i)*rm).lt.10d0) nw = nw+1
+            if( (k(i)*rm).ge.10d0) nc = nc+1
+         endif
+      enddo
+!      write(6,*) "no = ", no
+      if((no+nw+nc).ne.BPD%NumChannels) then
+         write(6,*) "Channel miscount in calcK"
+         stop
+      endif
+
+      allocate(s(no),c(no),Imat(no,no),Jmat(no,no))
+      allocate(sp(no),cp(no))
+      do i = 1,no
+         !        write(6,*) d, k(i), rm, k(i)*rm,BPD%lam(i)
+         call hyperrjry(3,1d0,BPD%lam(i),k(i)*rm,rhypj,rhypy,rhypjp,rhypyp)
+         s(i) = dsqrt(mu)*rhypj  ! the factor of sqrt(mu) is for energy normalization
+         c(i) = -dsqrt(mu)*rhypy ! the factor of sqrt(mu) is for energy normalization
+         sp(i) = k(i)*dsqrt(mu)*rhypjp
+         cp(i) = -k(i)*dsqrt(mu)*rhypyp
+         write(6,*) i,c(i)*sp(i)-s(i)*cp(i)
+      enddo
+      
+      do i=1,no
+         do beta=1,no
+            Imat(i,beta) = (B%Z(i,beta)*cp(i) - B%ZP(i,beta)*c(i))/(s(i)*cp(i)-c(i)*sp(i))
+            Jmat(i,beta) = (B%Z(i,beta)*sp(i) - B%ZP(i,beta)*s(i))/(c(i)*sp(i)-s(i)*cp(i))
+         enddo
+      enddo
+      write(6,*) "Imat:"
+      call printmatrix(Imat,no,no,6)
+      write(6,*) "Jmat:"
+      call printmatrix(Jmat,no,no,6)
+      call SqrMatInv(Imat, no)
+      B%K = matmul(Jmat,Imat)
+      !B%K(1,1) = Jmat(1,1)/Imat(1,1)
+      ! Now asymptotically the solution matrix goes as s + K*c
+      
+    end subroutine CalcK
+    
+  end module Scattering
+  !****************************************************************************************************
   module BalujaParameters
   implicit none
     double precision BalujaMCmat(3,3,2), BalujaEth(3)              ! this is the Baluja et al Multipole coupling matrix and thresholds
@@ -273,8 +442,6 @@ end module DataStructures
       RMatBaluja1(3,1) = 0.000514900d0
       RMatBaluja1(3,2) = -0.01735370d0
       RMatBaluja1(3,3) = 0.00829450d0
-
-
       
       RMatBaluja2(1,1) = -0.392776d0
       RMatBaluja2(1,2) = -0.0134222d0
@@ -307,18 +474,15 @@ end module DataStructures
          xScaledZero = 0.5d0*(bx+ax)
          do lx = 1,LegPoints
             BPD%x(lx,kx) = xScale(kx)*xLeg(lx) + xScaledZero
-            call POTLMX(3,BPD%x(lx,kx),pot)
-            BPD%Pot(:,:,lx,kx) = pot
-!!$            
-!!$            do mch=1,BPD%NumChannels
-!!$               !BPD%Pot(mch,mch,lx,kx) = BalujaPotential(mch,mch,BPD%x(lx,kx))
-!!$               BPD%Pot(mch,mch,lx,kx) = pot(mch,mch)
-!!$               do nch=1,mch-1
-!!$                  !BPD%Pot(mch,nch,lx,kx) = BalujaPotential(mch,nch,BPD%x(lx,kx))
-!!$                  BPD%Pot(mch,nch,lx,kx) = pot(mch,nch)!BalujaPotential(mch,nch,BPD%x(lx,kx))
-!!$                  BPD%Pot(nch,mch,lx,kx) = BPD%Pot(mch,nch,lx,kx) ! Potential is symmetric
-!!$               enddo
-!!$            enddo
+!            call POTLMX(3,BPD%x(lx,kx),pot)
+            !BPD%Pot(:,:,lx,kx) = pot
+            do mch=1,BPD%NumChannels
+               BPD%Pot(mch,mch,lx,kx) = BalujaPotential(mch,mch,BPD%x(lx,kx))
+               do nch=1,mch-1
+                  BPD%Pot(mch,nch,lx,kx) = BalujaPotential(mch,nch,BPD%x(lx,kx))
+                  BPD%Pot(nch,mch,lx,kx) = BPD%Pot(mch,nch,lx,kx) ! Potential is symmetric
+               enddo
+            enddo
          enddo
       enddo
     end subroutine SetBalujaPotential
@@ -349,21 +513,112 @@ end module DataStructures
     !****************************************************************************************************
   end module BalujaParameters
   !****************************************************************************************************
+      module MorsePotential
+      use DataStructures
+      use Quadrature
+      implicit none
+      type Morse
+         double precision D(3),V(3,3),rc(3,3),a(3,3)
+         double precision Eth(3)
+         integer NumMorseOpen,l
+      end type Morse
 
-!****************************************************************************************************
+    contains
+      subroutine InitMorse(M)
+        type(Morse) :: M
+        M%D(1)=1.d0
+        M%D(2)=4.d0
+        M%D(3)=6.d0
+        M%V=0d0
+        M%V(1,2)=0.2d0
+        M%V(2,1)=M%V(1,2)
+        M%V(2,3)=0.2d0
+        M%V(3,2)=M%V(2,3)
+        M%a=1d0
+        M%a(1,2)=0.5d0
+        M%a(2,1)=M%a(1,2)
+        M%a(2,3)=0.5d0
+        M%a(3,2)=M%a(2,3)
+        M%rc=1d0                !initialize coupling ranges to 1
+        M%rc(1,2) = 0.5d0       !set any coupling ranges different from 1d0
+        M%rc(2,1) = M%rc(1,2)
+        M%l=0
+        M%Eth(1) = 0d0
+        M%Eth(2) = 3d0
+        M%Eth(3) = 5d0
+        
+      end subroutine InitMorse
+      
+      function Morse1(a,D,re,r)
+        double precision Morse1, a, D, re, r
+        Morse1 = D*(1d0 - dexp(-(r - re)/a))**2 - D
+        return
+      end function Morse1
+      
+      subroutine SetMorsePotential(BPD,M)
+        
+        implicit none
+        type(BPData) BPD
+        type(Morse) M
+        integer kx,lx,mch,nch,NChan
+        double precision ax,bx,xScaledZero,pot(3,3)
+        double precision xScale(BPD%xNumPoints)
+        Nchan=3
+        BPD%Pot(:,:,:,:) = 0d0
+
+!        write(6,*) "V:"
+!        call printmatrix(M%V,3,3,6)
+!        write(6,*) "D:"
+!        call printmatrix(M%D,3,1,6)
+        
+        do kx = 1,BPD%xNumPoints-1
+           ax = BPD%xPoints(kx)
+           bx = BPD%xPoints(kx+1)
+           xScale(kx) = 0.5d0*(bx-ax)
+           xScaledZero = 0.5d0*(bx+ax)
+           do lx = 1,LegPoints
+              BPD%x(lx,kx) = xScale(kx)*xLeg(lx) + xScaledZero
+              do mch = 1,NChan
+                 BPD%Pot(mch,mch,lx,kx) = Morse1(M%a(mch,mch),M%D(mch),M%rc(mch,mch),BPD%x(lx,kx)) + M%Eth(mch)
+                 do nch = 1, mch-1
+                    BPD%Pot(mch,nch,lx,kx) = M%V(mch,nch)*dexp(-(BPD%x(lx,kx)-M%rc(mch,nch))**2/M%a(mch,nch)**2)
+                    BPD%Pot(nch,mch,lx,kx) = BPD%Pot(mch,nch,lx,kx)
+                 enddo
+              enddo
+           enddo
+        enddo
+
+      end subroutine SetMorsePotential
+    end module MorsePotential
+    !****************************************************************************************************
+    subroutine makeEgrid(Egrid,NumE,E1,E2)
+      double precision Egrid(NumE)
+      double precision E1,E2
+      integer NumE, iE
+
+
+      do iE=1,NumE
+         Egrid(iE) = E1 + (iE-1)*(E2-E1)/(NumE-1)
+      enddo
+    end subroutine makeEgrid
 !****************************************************************************************************
 program main
   use DataStructures
   use GlobalVars
   use BalujaParameters
   use Quadrature
+  use MorsePotential
+  use scattering
 !  use MatrixElements
   implicit none
   type(BPData) BPD
   type(GenEigVal) EIG
   type(BoxData) BA, BB
+  type(Morse) :: M
   double precision, allocatable :: evec(:,:), eval(:)!, temp0(:,:)
-
+  double precision, allocatable :: Egrid(:)
+  integer NumE, iE
+  
   !----------------------------------------------------------------------
   ! Read information from the input file
   !----------------------------------------------------------------------
@@ -382,15 +637,14 @@ program main
   BPD%Left = StartBC
   BPD%Right = EndBC
   BPD%xNumPoints=xTotNumPoints
-  BPD%kl = kStart ! only relevant for Left = 3. This is the normal log-derivative at x1
-  BPD%kr = kEnd ! only relevant for Right = 3. This is the normal log-derivative at x2
+  BPD%kl = kStart ! only relevant for Left = 3. This is the normal log-derivative at BPD%xl
+  BPD%kr = kEnd ! only relevant for Right = 3. This is the normal log-derivative at BPD%xr
   
-  allocate(BPD%xPoints(BPD%xNumPoints))
-  allocate(BPD%xBounds(BPD%xNumPoints + 2*BPD%Order))   ! allocate xBounds before calling CalcBasisFuncs
-  allocate(BPD%x(LegPoints,BPD%xNumPoints-1))
-
-  call GridMakerLinear(BPD%xNumPoints,xStart,xEnd,BPD%xPoints)
-  call MakeBPData(BPD)
+  call AllocateBPD(BPD)
+  BPD%xl=xStart
+  BPD%xr=xEnd
+  call GridMakerLinear(BPD%xNumPoints,BPD%xl,BPD%xr,BPD%xPoints)
+  call Makebasis(BPD)
 
   write(6,"(A,T25,2I3)") 'Left BC...', BPD%Left
   write(6,"(A,T25,2I3)") 'Right BC...', BPD%Right
@@ -408,81 +662,96 @@ program main
   ! Initialize the Baluja et al data and print it to the screen
   !--------------------------------------------------
   !call SetBalujaPotential(BPD)
-  call SetZeroPotential(BPD)
+  !call SetZeroPotential(BPD)
+  call InitMorse(M)
+  call SetMorsePotential(BPD,M)
+  call checkpot(BPD,100)
+  NumE=2000
+  allocate(Egrid(NumE))
+  call makeEgrid(Egrid,NumE,M%Eth(1)+0.01d0,M%Eth(2)-0.01d0)
+  
+  
   !----------------------------------------------------------------------------------------------------
   ! Comment/uncomment the next line if you want to print the basis to file fort.300
   !----------------------------------------------------------------------------------------------------
-  call CheckBasisBP(BPD%xDim,BPD%xNumPoints,BPD%xBounds,BPD%Order,300,LegPoints,BPD%u,BPD%x)
+  !call CheckBasisBP(BPD%xDim,BPD%xNumPoints,BPD%xBounds,BPD%Order,300,LegPoints,BPD%u,BPD%x)
 
-  write(6,*) '--------------------------------'
-  write(6,*) 'The starting R-Matrix at r=5.d0:'
-  call printmatrix(RMatBaluja1,3,3,6)
-  write(6,*) '--------------------------------'
+!  write(6,*) '--------------------------------'
+!  write(6,*) 'The starting R-Matrix at r=5.d0:'
+!  call printmatrix(RMatBaluja1,3,3,6)
+!  write(6,*) '--------------------------------'
 
   EIG%MatrixDim=BPD%MatrixDim
-  !allocate(temp0(BPD%MatrixDim,BPD%MatrixDim))
-  allocate(EIG%evec(EIG%MatrixDim,EIG%MatrixDim),EIG%eval(EIG%MatrixDim))
-  call CalcGamLam(BPD,EIG)
-  call Mydggev(EIG%MatrixDim,EIG%Gam,EIG%MatrixDim,EIG%Lam,EIG%MatrixDim,EIG%eval,EIG%evec)
-
   BA%NumOpenL = 0
   BA%NumOpenR = 3
-  BA%NumOpen = 3
-  BA%betaMax = BA%NumOpen
+  BA%betaMax = BA%NumOpenL+BA%NumOpenR
   
   BB%NumOpenL = 0
   BB%NumOpenR = 3
-  BB%NumOpen = 3
-  BB%betaMax = 3
+  BB%betaMax = BB%NumOpenL+BB%NumOpenR
 
+  call AllocateBox(BA)
+  call AllocateBox(BB)
 
-  !BA%RF = -xStart*RMatBaluja1
-  allocate(BA%RF(BB%NumOpenR,BA%NumOpenR))
-  allocate(BA%b(BA%betaMax),BA%bf(BA%NumOpenR))
-  allocate(BA%Z(BA%betaMax,BA%betaMax),BA%Zf(BA%NumOpenR,BA%NumOpenR))
-  allocate(BB%RF(BB%NumOpenR,BB%NumOpenR),BB%Z(BB%NumOpen,BB%NumOpen),BB%ZP(BB%NumOpen,BB%NumOpen))
-  allocate(BB%Zf(BB%NumOpenR,BB%NumOpenR),BB%bf(BB%NumOpenR),BB%b(BB%NumOpen))
+  call AllocateEIG(EIG)
 
-  !----------------------------------------------------------------------------------------------------
-  ! use this part to test the free particle solutions
-  ! be sure to change the values of NumOpenL and NumOpenR above
-  call BoxMatch(BA, BB, BPD, EIG)
-  write(6,*) "Final R-matrix:"
-  call printmatrix(BB%RF,BB%NumOpenR,BB%NumOpenR,6)
+  do iE = 1, NumE
+     Energy = Egrid(iE)
+     call CalcGamLam(BPD,EIG)
+     call Mydggev(EIG%MatrixDim,EIG%Gam,EIG%MatrixDim,EIG%Lam,EIG%MatrixDim,EIG%eval,EIG%evec)
+     !----------------------------------------------------------------------------------------------------
+     ! use this part to test the free particle solutions
+     ! be sure to change the values of NumOpenL and NumOpenR above
+     call BoxMatch(BA, BB, BPD, EIG)
+     !     write(6,*) "Final R-matrix:"
+     !     call printmatrix(BB%RF,BB%NumOpenR,BB%NumOpenR,6)
+     BB%K=0d0
+     call CalcK(BB,BPD,reducedmass,EffDim,Energy,M%Eth)
+     write(10,*) Energy, BB%K(1,1)
+  enddo
   
   !----------------------------------------------------------------------------------------------------
   ! be sure to change the values of NumOpenL and NumOpenR above
-!!$  !use this part for baluja algorithm
-!!$  BA%RF = RMatBaluja1  
-!!$  call RProp(BA, BB, BPD, EIG)
-!!$  write(6,*) "Final R-matrix:"
-!!$  call printmatrix(BB%RF,BB%NumOpenR,BB%NumOpenR,6)
+!!$  !!use this part for baluja algorithm
+!!$  !BA%RF = RMatBaluja1  
+!!$  !call RProp(BA, BB, BPD, EIG)
+!!$  !write(6,*) "Final R-matrix:"
+!!$  !call printmatrix(BB%RF,BB%NumOpenR,BB%NumOpenR,6)
 
 
 
   !----------------------------------------------------------------------------------------------------
   ! be sure to change the values of NumOpenL and NumOpenR above
   ! use this part for the box-matching algorithm
+!!$  BPD%Left = 2
+!!$  BPD%Right = 2
+!!$
+!!$  call Makebasis(BPD)
+!!$  
+!!$  BB%NumOpenL = 3
+!!$  BB%NumOpenR = 3
+!!$  BB%NumOpen = 6
+!!$  BB%betaMax = 6
+!!$  xstart = 5d0
+!!$  xend = 15d0
+!!$  
 !!$  BA%RF = xStart*RMatBaluja1
 !!$  !BA%RF = RMatBaluja1  
 !!$  call MYDSYEV(BA%RF,BA%betaMax,BA%b,BA%Z)
 !!$  BA%Zf=BA%Z
-!!$
+
 !!$  BA%b = -1.d0/BA%b
 !!$  BA%bf = BA%b
 !!$  call BoxMatch(BA, BB, BPD, EIG)
 !!$  write(6,*) "Final R-matrix:"
 !!$  call printmatrix(BB%RF/xEnd,BB%NumOpenR,BB%NumOpenR,6)
-!!$  !call printmatrix(BB%RF,BB%NumOpenR,BB%NumOpenR,6)
+  !call printmatrix(BB%RF,BB%NumOpenR,BB%NumOpenR,6)
 !!$
 !!$  write(6,*) "The Exact R-Matrix From Baluja et al at R=15.0 is:"
 !!$  call printmatrix(RMatBaluja2,3,3,6)
-!!$  if(NumSectors.eq.1) then
-!!$     call RMATPROP(Left,Right,xStart,xEnd)
-!!$  end if
+!!$
 
-
-  call checkbessel(0.0001d0,10d0,100,1d0,3,100)
+!  call checkbessel(0.0001d0,10d0,100,1d0,3,100)
   
 
   
@@ -497,10 +766,10 @@ subroutine printmatrix(M,nr,nc,file)
   double precision M(nr,nc)
   
   do j = 1,nr
-     write(file,*) (M(j,k), k = 1,nc)
+     write(file,20) (M(j,k), k = 1,nc)
   enddo
 
-20 format(1P,100D12.4)
+20 format(1P,100D20.12)
 30 format(100F12.6)
 end subroutine printmatrix
 !****************************************************************************************************
@@ -517,180 +786,7 @@ subroutine GridMakerLinear(xNumPoints,x1,x2,xPoints)
   enddo
 end subroutine GridMakerLinear
 !****************************************************************************************************
-subroutine MakeBPData(BPD)
-  use Quadrature
-  use DataStructures
-  implicit none
-  
-  type(BPData) BPD
-  integer xDimMin, ix, ixp
-  
-  !Determine the basis dimension for these boundary conditions
-  xDimMin=BPD%xNumPoints+BPD%Order-3
-  BPD%xDim=xDimMin
-  if (BPD%Left .eq. 2) BPD%xDim = BPD%xDim + 1
-  if (BPD%Right .eq. 2) BPD%xDim = BPD%xDim + 1
-  BPD%MatrixDim = BPD%NumChannels*BPD%xDim
-  
-  allocate(BPD%u(LegPoints,BPD%xNumPoints,BPD%xDim),BPD%ux(LegPoints,BPD%xNumPoints,BPD%xDim)) ! allocate memory for basis functions
-  allocate(BPD%kxMin(BPD%xDim,BPD%xDim),BPD%kxMax(BPD%xDim,BPD%xDim)) !
-  allocate(BPD%Pot(BPD%NumChannels,BPD%NumChannels,LegPoints,BPD%xNumPoints-1))
-  
-  call CalcBasisFuncsBP(BPD%Left,BPD%Right,BPD%kl,BPD%kr,BPD%Order,BPD%xPoints,LegPoints,xLeg, &
-       BPD%xDim,BPD%xBounds,BPD%xNumPoints,0,BPD%u)
-  call CalcBasisFuncsBP(BPD%Left,BPD%Right,BPD%kl,BPD%kr,BPD%Order,BPD%xPoints,LegPoints,xLeg, &
-       BPD%xDim,BPD%xBounds,BPD%xNumPoints,1,BPD%ux)
-  
-  ! Determine the bounds for integration of matrix elements
-  do ix = 1,BPD%xDim
-     do ixp = 1,BPD%xDim
-        BPD%kxMin(ixp,ix) = max(BPD%xBounds(ix),BPD%xBounds(ixp))
-        BPD%kxMax(ixp,ix) = min(BPD%xBounds(ix+BPD%Order+1),BPD%xBounds(ixp+BPD%Order+1))-1 !
-     enddo
-  enddo
-  
-end subroutine MakeBPData
-!****************************************************************************************************
-  subroutine RProp(BA, BB, BPD, EIG)
-    use DataStructures
-    use GlobalVars
-    implicit none
-    type(BPData), intent(in) :: BPD
-    type(GenEigVal), intent(in) :: EIG
-    type(BoxData), intent(in) :: BA
-    type(BoxData) BB
-    double precision, allocatable :: tempnorm(:,:), temp1(:,:), temp2(:,:), temp0(:,:), ZT(:,:),tempR(:,:)
-    double precision x1, x2
-    integer i,j,beta,betaprime,nch,mch!,betamax
-    integer, allocatable :: ikeep(:)
-    
-    allocate(ikeep(BPD%MatrixDim))
-!    call printmatrix(EIG%eval,BPD%MatrixDim,1,6)
-    j=1
-    ikeep = 0
-    do i = 1, BPD%MatrixDim
-       if(abs(EIG%eval(i)).ge.1e-12) then
-          write(6,"(A,T20,I5,T30,E12.6)") 'eval',i, EIG%eval(i)
-          ikeep(j)=i
-          j = j+1
-       endif
-    enddo
-    BB%betaMax=j-1
-    allocate(BB%NBeta(BB%betaMax),BB%Norm(BB%betaMax,BB%betaMax))
-    allocate(tempnorm(BPD%MatrixDim,BB%betaMax))
-    BB%Norm=0d0
-    tempnorm=0d0
-    BB%Nbeta=0d0
-    do beta=1,BB%betaMax
-       do betaprime=1,BB%betaMax
-          BB%Norm(beta,betaprime)=0d0
-          do i=1,BPD%MatrixDim
-             tempnorm(i,betaprime)=0.0d0
-             do j=1,BPD%MatrixDim
-                tempnorm(i,betaprime) = tempnorm(i,betaprime) + EIG%Lam(i,j)*EIG%evec(j,ikeep(betaprime)) ! 
-             enddo
-             BB%Norm(beta,betaprime) = BB%Norm(beta,betaprime) + EIG%evec(i,ikeep(beta))*tempnorm(i,betaprime) !  
-          enddo
-       enddo
-       BB%Nbeta(beta) = dsqrt(BB%Norm(beta,beta))
-       !write(6,*) 'norm(beta,beta)=',BB%Norm(beta,beta),'Nbeta(',beta,') = ',BB%Nbeta(beta) ! 
-    enddo
 
-    write(6,*) "Norm matrix:"
-    call printmatrix(BB%Norm,BB%betaMax,BB%betaMax,6)
-
-    x1=BPD%xPoints(1)
-    x2=BPD%xPoints(BPD%xNumPoints)
-
-    do beta = 1,BB%betaMax
-       do i = 1,BB%NumOpenL
-          BB%Z(i,beta) = EIG%evec((i-1)*BPD%xDim + 1, ikeep(beta))/BB%Nbeta(beta)! 
-          BB%ZP(i,beta) = EIG%eval(ikeep(beta))*BB%Z(i,beta)
-       enddo
-       do i = 1, BB%NumOpenR
-          BB%Z(i+BB%NumOpenL,beta) = EIG%evec((i-1)*BPD%xDim + BPD%xDim,ikeep(beta))/BB%Nbeta(beta) ! 
-          BB%ZP(i+BB%NumOpenL,beta) = -EIG%eval(ikeep(beta))*BB%Z(i+BB%NumOpenL,beta)
-       enddo
-    enddo
-    
-    allocate(ZT(BB%betaMax,BB%betaMax))
-    write(6,*) "Z:"
-    call printmatrix(BB%Z,BB%betaMax,BB%betaMax,6)
-!    call printmatrix(BB%ZP,BB%betaMax,BB%betaMax,6)
-
-    allocate(temp0(BB%betaMax,BB%betaMax))
-    ZT = BB%Z
-    temp0 = 0d0
-    call dgemm('T','N',BB%betaMax,BB%betaMax,BB%betaMax,1.0d0,ZT,BB%betaMax,BB%Z,BB%betaMax,0.0d0,temp0,BB%betaMax) !
-
-    write(6,*) "Check norm:"
-    call printmatrix(temp0,BB%betaMax,BB%betaMax,6)
-
-    if(BB%NumOpenL.gt.0) then
-       allocate(BB%R11(BB%NumOpenL,BB%NumOpenL),BB%R12(BB%NumOpenL,BB%NumOpenR))
-       allocate(BB%R21(BB%NumOpenR,BB%NumOpenL),BB%R22(BB%NumOpenR,BB%NumOpenR))
-       allocate(temp1(BB%NumOpenL,BB%NumOpenL),temp2(BB%NumOpenR,BB%NumOpenL))
-       BB%R11=0d0
-       BB%R12=0d0
-       BB%R21=0d0
-       BB%R22=0d0
-       BB%RF=0d0
-
-       do beta=1,BB%betaMax
-          do i=1,BB%NumOpenL
-             do j=1,BB%NumOpenL
-                BB%R11(i,j) = BB%R11(i,j) - BB%Z(i,beta)*BB%Z(j,beta)/EIG%eval(ikeep(beta))
-             enddo
-          enddo
-          do i=1,BB%NumOpenL
-             do j=1,BB%NumOpenR
-                BB%R12(i,j) = BB%R12(i,j) - BB%Z(i,beta)*BB%Z(j + BB%NumOpenL,beta)/EIG%eval(ikeep(beta)) ! 
-             enddo
-          enddo
-          do i=1,BB%NumOpenR
-             do j=1,BB%NumOpenL
-                BB%R21(i,j) = BB%R21(i,j) - BB%Z(i + BB%NumOpenL,beta)*BB%Z(j,beta)/EIG%eval(ikeep(beta)) ! 
-             enddo
-          enddo
-          do i=1,BB%NumOpenR
-             do j=1,BB%NumOpenR
-                BB%R22(i,j) = BB%R22(i,j) - BB%Z(i + BB%NumOpenL,beta)*BB%Z(j + BB%NumOpenL,beta)/EIG%eval(ikeep(beta)) ! 
-             enddo
-          enddo
-       enddo
-       
-       !Flip the sign to account for the minus sign convention of Baluja
-!!$       BB%R11 = -BB%R11
-!!$       BB%R12 = -BB%R12
-!!$       BB%R21 = -BB%R21
-!!$       BB%R22 = -BB%R22
-             
-       temp1 = BB%R11 + x1*BA%RF
-       
-       allocate(tempR(BB%NumOpenR,BB%NumOpenR))
-       call SqrMatInv(temp1,BB%NumOpenL)
-       call dgemm('N','N',BB%NumOpenR,BB%NumOpenL,BB%NumOpenL,1.0d0,BB%R21,BB%NumOpenR,temp1,BB%NumOpenL,0.0d0,temp2,BB%NumOpenR) ! 
-       call dgemm('N','N',BB%NumOpenR,BB%NumOpenR,BB%NumOpenL,1.0d0,temp2,BB%NumOpenR,BB%R12,BB%NumOpenL,0.0d0,tempR,BB%NumOpenR) !
-
-
-       BB%RF = (BB%R22 - tempR)/x2
-       deallocate(BB%R11,BB%R12,BB%R21,BB%R22)
-       deallocate(temp1,temp2)
-    else
-       temp0 = BB%ZP
-       call SqrMatInv(temp0,BB%betaMax)
-       call dgemm('N','N',BB%betaMax,BB%betaMax,BB%betaMax,1.0d0,BB%Z,BB%betaMax,temp0,BB%betaMax,0.0d0,BB%RF,BB%betaMax) ! 
-    end if
-
-    deallocate(temp0)
-
-    deallocate(ikeep)
-    deallocate(tempnorm)
-    deallocate(BB%NBeta,BB%Norm)
-    deallocate(ZT)
-  end subroutine RProp
-
-  
 !****************************************************************************************************
   subroutine BoxMatch(BA, BB, BPD, EIG)
     use DataStructures
@@ -703,7 +799,7 @@ end subroutine MakeBPData
     double precision, allocatable :: tempnorm(:,:), temp1(:,:), temp2(:,:), temp0(:,:), ZT(:,:),tempR(:,:)
     double precision, allocatable :: BigZA(:,:), BigZB(:,:),Dvec(:,:),bfinal(:)
     integer, allocatable :: Dikeep(:)
-    double precision x1, x2, NewNorm
+    double precision NewNorm
     integer i,j,k,beta,betaprime,nch,mch!,betamax
     integer, allocatable :: ikeep(:)
     
@@ -713,13 +809,13 @@ end subroutine MakeBPData
     ikeep = 0
     do i = 1, BPD%MatrixDim
        if(abs(EIG%eval(i)).ge.1e-12) then
-          write(6,"(A,T20,I5,T30,E12.6)") 'eval',i, EIG%eval(i)
+!          write(6,"(A,T20,I5,T30,E12.6)") 'eval',i, EIG%eval(i)
           ikeep(j)=i
           j = j+1
        endif
     enddo
     BB%betaMax=j-1
-    allocate(BB%NBeta(BB%betaMax),BB%Norm(BB%betaMax,BB%betaMax))
+
     allocate(tempnorm(BPD%MatrixDim,BB%betaMax))
     BB%Norm=0d0
     tempnorm=0d0
@@ -742,16 +838,18 @@ end subroutine MakeBPData
     write(6,*) "Norm matrix:"
     call printmatrix(BB%Norm,BB%betaMax,BB%betaMax,6)
 
-    x1=BPD%xPoints(1)
-    x2=BPD%xPoints(BPD%xNumPoints)
 
     do beta = 1,BB%betaMax
        do i = 1,BB%NumOpenL
-          BB%Z(i,beta) = EIG%evec((i-1)*BPD%xDim + 1, ikeep(beta))/BB%Nbeta(beta)! 
+          !BB%Z(i,beta) = BPD%xl**(EffDim-1d0-2d0*AlphaFactor)*EIG%evec((i-1)*BPD%xDim + 1, ikeep(beta))/BB%Nbeta(beta)!
+          BB%Z(i,beta) = BPD%xl**(0.5d0*(EffDim-1d0-2d0*AlphaFactor))*&
+               EIG%evec((i-1)*BPD%xDim + 1, ikeep(beta))/BB%Nbeta(beta)! 
           BB%ZP(i,beta) = EIG%eval(ikeep(beta))*BB%Z(i,beta)
        enddo
        do i = 1, BB%NumOpenR
-          BB%Z(i+BB%NumOpenL,beta) = EIG%evec((i-1)*BPD%xDim + BPD%xDim,ikeep(beta))/BB%Nbeta(beta) ! 
+          !BB%Z(i+BB%NumOpenL,beta) = BPD%xr**(EffDim-1d0-2d0*AlphaFactor)*EIG%evec((i-1)*BPD%xDim + BPD%xDim,ikeep(beta))/BB%Nbeta(beta) !
+          BB%Z(i+BB%NumOpenL,beta) = BPD%xr**(0.5d0*(EffDim-1d0-2d0*AlphaFactor))*&
+               EIG%evec((i-1)*BPD%xDim + BPD%xDim,ikeep(beta))/BB%Nbeta(beta) ! 
           BB%ZP(i+BB%NumOpenL,beta) = -EIG%eval(ikeep(beta))*BB%Z(i+BB%NumOpenL,beta)
        enddo
     enddo
@@ -783,7 +881,7 @@ end subroutine MakeBPData
           BigZA(i+BB%NumOpenL,beta)=BA%Zf(i,beta)*BA%bf(beta) ! 
        enddo
     enddo
-    
+  
     
     do i=1,BB%NumOpenL
        do beta=1,BB%betaMax
@@ -808,42 +906,32 @@ end subroutine MakeBPData
     print*, 'b : '
     call printmatrix(BB%b,BB%NumOpenL+BB%betaMax,1,6)
     
-    print*, 'Dvec : '
-    do j = 1,BB%betaMax
-       write(6,*) (Dvec(j,k), k = 1,BB%betaMax)
-    enddo
-    print*, 'Dvec : '
-    call printmatrix(Dvec,BB%NumOpenL+BB%betaMax,BB%NumOpenL+BB%betaMax,6)
-    print*, 'Dvec 1: '
-    call printmatrix(Dvec(:,1),BB%NumOpenL+BB%betaMax,1,6)
-    print*, 'Dvec 2: '
-    call printmatrix(Dvec(:,2),BB%NumOpenL+BB%betaMax,1,6)
-    print*, 'Dvec 3: '
-    call printmatrix(Dvec(:,3),BB%NumOpenL+BB%betaMax,1,6)
-    write(6,*) "diagonal of D", Dvec(1,1), Dvec(2,2), Dvec(3,3)
-
+!!$    print*, 'Dvec : '
+!!$    do j = 1,BB%betaMax
+!!$       write(6,*) (Dvec(j,k), k = 1,BB%betaMax)
+!!$    enddo
     j=1
     do i = 1,BB%NumOpenL+BB%betaMax
        if(abs(BB%b(i)).ge.1e-12) then
           Dikeep(j)=i
           BB%bf(j)=BB%b(i)
-          write(6,*) i, j, BB%bf(j), (Dvec(k,i), k=BB%NumOpenL+1,BB%NumOpenL+BB%betaMax)
+          !write(6,*) i, j, BB%bf(j), (Dvec(k,i), k=BB%NumOpenL+1,BB%NumOpenL+BB%betaMax)
           j=j+1
        endif
     enddo
     print*, 'Final Number of Channels : ',j-1
     do beta=1,BB%NumOpenR
        !for each beta, construct the final state with constant log-derivative at the right boundary
-       write(6,*) "beta value being calculated now is: ", beta, BB%bf(beta)
+       !write(6,*) "beta value being calculated now is: ", beta, BB%bf(beta)
        do i=1, BB%NumOpenR
           BB%Zf(i,beta) = 0.0d0
           do betaprime = 1,BB%betaMax
 
              BB%Zf(i,beta) =  BB%Zf(i,beta) + BB%Z(BB%NumOpenL+i,betaprime)*Dvec(BB%NumOpenL+betaprime,Dikeep(beta)) !
-             write(6,*) "adding...",BB%NumOpenL+i, betaprime, BB%Z(BB%NumOpenL+i,betaprime),"*",&
-                  Dvec(BB%NumOpenL+betaprime,Dikeep(beta))
+             !write(6,*) "adding...",BB%NumOpenL+i, betaprime, BB%Z(BB%NumOpenL+i,betaprime),"*",&
+             !     Dvec(BB%NumOpenL+betaprime,Dikeep(beta))
           enddo
-          write(6,*) i,beta,"Zf = ", BB%Zf(i,beta)
+          !write(6,*) i,beta,"Zf = ", BB%Zf(i,beta)
        enddo
        ! calculate the normalization of the final state
        NewNorm=0.0d0
@@ -855,7 +943,7 @@ end subroutine MakeBPData
        ! normalize
        do i=1,BB%NumOpenR
           BB%Zf(i,beta) = BB%Zf(i,beta)/NewNorm
-
+          BB%Zfp(i,beta) = -BB%Zf(i,beta)*BB%bf(beta)
        enddo
     enddo
     print*, 'Dvec : '
@@ -877,7 +965,7 @@ end subroutine MakeBPData
 
     deallocate(ikeep)
     deallocate(tempnorm)
-    deallocate(BB%NBeta,BB%Norm)
+
     deallocate(ZT)
   end subroutine BoxMatch
 
@@ -911,6 +999,7 @@ end subroutine MakeBPData
     enddo
 
   END SUBROUTINE POTLMX
+  !****************************************************************************************************
   subroutine checkbessel(xmin,xmax,npts,lam,d,file)
     implicit none
     double precision xmin, xmax
@@ -953,4 +1042,6 @@ end subroutine MakeBPData
          enddo
       enddo
     end subroutine SetZeroPotential
-  !****************************************************************************************************
+    !****************************************************************************************************
+
+    !****************************************************************************************************
