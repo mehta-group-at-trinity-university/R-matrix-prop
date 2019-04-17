@@ -86,6 +86,7 @@ contains
     
     close(unit=7)
     EffDim = NumParticles*SpatialDim - SpatialDim
+    !AlphaFactor = 0d0
     AlphaFactor = (EffDim-1d0)/2d0
     
     If (NumParticles.eq.2) then
@@ -263,16 +264,13 @@ end module DataStructures
                 xIntScale(kx) = 0.5d0*(bx-ax)
                 xScaledZero = 0.5d0*(bx+ax)
                 TempG = 0.0d0
-                ! Ultimately, these matrix elements should be calculated elsewhere since they won't change from sector to sector. (for all middle boxes)
                 do lx = 1,LegPoints
                    a = wLeg(lx)*xIntScale(kx)*BPD%x(lx,kx)**(EffDim-1d0-2d0*AlphaFactor)
-                   
                    ! The KE matrix elements
                    TempG = TempG - a*(BPD%ux(lx,kx,ix)*BPD%ux(lx,kx,ixp))
                    ! The diagonal "overlap"*energy and additional term from reducing the wavefunction
                    TempG = TempG + a*BPD%u(lx,kx,ix)*2*reducedmass*(Energy - (BPD%Pot(mch,mch,lx,kx) - &
                         AlphaFactor*(AlphaFactor-EffDim+2)/(2d0*reducedmass*BPD%x(lx,kx)**2)))*BPD%u(lx,kx,ixp)
-                   
                 enddo
                 EIG%Gam((mch-1)*BPD%xDim+ix,(mch-1)*BPD%xDim+ixp) = EIG%Gam((mch-1)*BPD%xDim+ix,(mch-1)*BPD%xDim+ixp) + TempG ! place values into Gamma0
              enddo
@@ -287,7 +285,6 @@ end module DataStructures
                    TempG = 0.0d0
                    do lx = 1,LegPoints
                       a = wLeg(lx)*xIntScale(kx)*BPD%x(lx,kx)**(EffDim-1d0-2d0*AlphaFactor)
-                      
                       ! The potential matrix elements calculated here
                       TempG = TempG - a*BPD%u(lx,kx,ix)*2.0d0*reducedmass*BPD%Pot(mch,nch,lx,kx)*BPD%u(lx,kx,ixp)
                    enddo
@@ -354,7 +351,7 @@ end module DataStructures
       allocate(sp(no),cp(no))
       do i = 1,no
          !        write(6,*) d, k(i), rm, k(i)*rm,BPD%lam(i)
-         call hyperrjry(3,1d0,BPD%lam(i),k(i)*rm,rhypj,rhypy,rhypjp,rhypyp)
+         call hyperrjry(int(d),AlphaFactor,BPD%lam(i),k(i)*rm,rhypj,rhypy,rhypjp,rhypyp)
          s(i) = dsqrt(mu)*rhypj  ! the factor of sqrt(mu) is for energy normalization
          c(i) = -dsqrt(mu)*rhypy ! the factor of sqrt(mu) is for energy normalization
          sp(i) = k(i)*dsqrt(mu)*rhypjp
@@ -374,8 +371,6 @@ end module DataStructures
       call printmatrix(Jmat,no,no,6)
       call SqrMatInv(Imat, no)
       B%K = matmul(Jmat,Imat)
-      !B%K(1,1) = Jmat(1,1)/Imat(1,1)
-      ! Now asymptotically the solution matrix goes as s + K*c
       
     end subroutine CalcK
     
@@ -639,7 +634,7 @@ program main
   BPD%xNumPoints=xTotNumPoints
   BPD%kl = kStart ! only relevant for Left = 3. This is the normal log-derivative at BPD%xl
   BPD%kr = kEnd ! only relevant for Right = 3. This is the normal log-derivative at BPD%xr
-  
+
   call AllocateBPD(BPD)
   BPD%xl=xStart
   BPD%xr=xEnd
@@ -809,12 +804,12 @@ end subroutine GridMakerLinear
     ikeep = 0
     do i = 1, BPD%MatrixDim
        if(abs(EIG%eval(i)).ge.1e-12) then
-!          write(6,"(A,T20,I5,T30,E12.6)") 'eval',i, EIG%eval(i)
+          write(6,"(A,T20,I5,T30,E12.6)") 'eval',i, EIG%eval(i)
           ikeep(j)=i
           j = j+1
        endif
     enddo
-    BB%betaMax=j-1
+    !BB%betaMax=j-1
 
     allocate(tempnorm(BPD%MatrixDim,BB%betaMax))
     BB%Norm=0d0
@@ -841,15 +836,18 @@ end subroutine GridMakerLinear
 
     do beta = 1,BB%betaMax
        do i = 1,BB%NumOpenL
+          BB%Z(i,beta) = EIG%evec((i-1)*BPD%xDim + 1, ikeep(beta))/BB%Nbeta(beta)!
           !BB%Z(i,beta) = BPD%xl**(EffDim-1d0-2d0*AlphaFactor)*EIG%evec((i-1)*BPD%xDim + 1, ikeep(beta))/BB%Nbeta(beta)!
-          BB%Z(i,beta) = BPD%xl**(0.5d0*(EffDim-1d0-2d0*AlphaFactor))*&
-               EIG%evec((i-1)*BPD%xDim + 1, ikeep(beta))/BB%Nbeta(beta)! 
+          !BB%Z(i,beta) = BPD%xl**(0.5d0*(EffDim-1d0-2d0*AlphaFactor))*&
+          !     EIG%evec((i-1)*BPD%xDim + 1, ikeep(beta))/BB%Nbeta(beta)! 
           BB%ZP(i,beta) = EIG%eval(ikeep(beta))*BB%Z(i,beta)
        enddo
        do i = 1, BB%NumOpenR
-          !BB%Z(i+BB%NumOpenL,beta) = BPD%xr**(EffDim-1d0-2d0*AlphaFactor)*EIG%evec((i-1)*BPD%xDim + BPD%xDim,ikeep(beta))/BB%Nbeta(beta) !
-          BB%Z(i+BB%NumOpenL,beta) = BPD%xr**(0.5d0*(EffDim-1d0-2d0*AlphaFactor))*&
-               EIG%evec((i-1)*BPD%xDim + BPD%xDim,ikeep(beta))/BB%Nbeta(beta) ! 
+          BB%Z(i+BB%NumOpenL,beta) = EIG%evec((i-1)*BPD%xDim + BPD%xDim,ikeep(beta))/BB%Nbeta(beta) !
+          !BB%Z(i+BB%NumOpenL,beta) = BPD%xr**(EffDim-1d0-2d0*AlphaFactor)&
+          !     *EIG%evec((i-1)*BPD%xDim + BPD%xDim,ikeep(beta))/BB%Nbeta(beta) !
+          !BB%Z(i+BB%NumOpenL,beta) = BPD%xr**(0.5d0*(EffDim-1d0-2d0*AlphaFactor))*&
+          !     EIG%evec((i-1)*BPD%xDim + BPD%xDim,ikeep(beta))/BB%Nbeta(beta) ! 
           BB%ZP(i+BB%NumOpenL,beta) = -EIG%eval(ikeep(beta))*BB%Z(i+BB%NumOpenL,beta)
        enddo
     enddo
