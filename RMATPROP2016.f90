@@ -123,28 +123,60 @@ module DataStructures
      double precision xL, xR
      double precision, allocatable :: Z(:,:), ZP(:,:), NBeta(:), Norm(:,:)
      double precision, allocatable :: b(:), bf(:), Zf(:,:), Zfp(:,:)
-     double precision, allocatable :: RF(:,:),K(:,:)
+     !double precision, allocatable :: RF(:,:),K(:,:)
      
   end type BoxData
-
+  type ScatData
+     double precision, allocatable :: K(:,:), R(:,:), f(:,:), sigma(:,:)
+     complex*8, allocatable :: S(:,:), T(:,:)
+     
+  end type ScatData
+  
 contains
+  !****************************************************************************************************
+  subroutine AllocateScat(SD,N)
+    implicit none
+    type(ScatData) SD
+    integer N
+    allocate(SD%K(N,N),SD%R(N,N),SD%f(N,N),SD%sigma(N,N))
+    allocate(SD%S(N,N),SD%T(N,N))
+    SD%K=0d0
+    SD%R=0d0
+    SD%f=0d0
+    SD%sigma=0d0
+    SD%S=(0d0,0d0)
+    SD%T=(0d0,0d0)
+  end subroutine AllocateScat
+  !****************************************************************************************************
+  subroutine DeAllocateScat(SD)
+    implicit none
+    type(ScatData) SD
+
+    deallocate(SD%K,SD%R,SD%f,SD%sigma,SD%S,SD%T)
+    
+  end subroutine DeAllocateScat
   !****************************************************************************************************
   subroutine AllocateEIG(EIG)
     implicit none
     type(GenEigVal) :: EIG
     allocate(EIG%Gam(EIG%MatrixDim,EIG%MatrixDim),EIG%Lam(EIG%MatrixDim,EIG%MatrixDim))
     allocate(EIG%eval(EIG%MatrixDim),EIG%evec(EIG%MatrixDim,EIG%MatrixDim))
+    EIG%Gam=0d0
+    EIG%Lam=0d0
+    EIG%eval=0d0
+    EIG%Evec=0d0
     
   end subroutine AllocateEIG
   !****************************************************************************************************
-  subroutine DeAllocate(EIG)
+  subroutine DeAllocateEIG(EIG)
     implicit none
     type(GenEigVal) :: EIG
     deallocate(EIG%Gam,EIG%Lam,EIG%eval,EIG%evec)
     
-  end subroutine DeAllocate
+  end subroutine DeAllocateEIG
   !****************************************************************************************************
   subroutine AllocateBox(B)
+    implicit none
     type(BoxData) :: B
     
     B%betaMax = B%NumOpenR + B%NumOpenL
@@ -153,17 +185,34 @@ contains
     allocate(B%b(B%betaMax))
     allocate(B%NBeta(B%betaMax))
     allocate(B%Norm(B%betaMax,B%betaMax))
-    allocate(B%RF(B%NumOpenR,B%NumOpenR),B%Zf(B%NumOpenR,B%NumOpenR),B%Zfp(B%NumOpenR,B%NumOpenR))
+    allocate(B%Zf(B%NumOpenR,B%NumOpenR),B%Zfp(B%NumOpenR,B%NumOpenR))
     allocate(B%bf(B%NumOpenR))
-    allocate(B%K(B%NumOpenR,B%NumOpenR))
+
   end subroutine AllocateBox
   !****************************************************************************************************
+  subroutine InitZeroBox(B)
+    implicit none
+    type(BoxData) :: B
+    B%Z=0d0
+    B%ZP=0d0
+    B%b=0d0
+    B%NBeta=0d0
+    B%Norm=0d0
+    B%Zf=0d0
+    B%Zfp=0d0
+    B%bf=0d0
+
+  end subroutine InitZeroBox
+  !****************************************************************************************************
   subroutine DeAllocateBox(B)
+    implicit none
     type(BoxData) :: B
 
     deallocate(B%Z,B%ZP)
     deallocate(B%b)
-    deallocate(B%NBeta,B%Norm,B%RF,B%Zf,B%bf,B%K,B%Zfp)
+    deallocate(B%NBeta,B%Norm,B%Zf,B%bf,B%Zfp)
+
+    
   end subroutine DeAllocateBox
   !****************************************************************************************************
   subroutine AllocateBPD(BPD)
@@ -247,12 +296,14 @@ end module DataStructures
     use Quadrature
     use GlobalVars
     implicit none
-    type(BPData) :: BPD
+    type(BPData), intent(in) :: BPD
     type(GenEigVal) :: EIG
     integer ix,ixp,lx,kx,mch,nch
     double precision a, ax, bx, xIntScale(BPD%xNumPoints), TempG, xScaledZero
     EIG%Gam=0d0
     EIG%Lam=0d0
+    EIG%eval=0d0
+    EIG%evec=0d0
     !Calculate the Gamma Matrix elements
     do ix = 1,BPD%xDim
        do ixp = max(1,ix-BPD%Order),min(BPD%xDim,ix+BPD%Order)
@@ -313,14 +364,14 @@ end module DataStructures
   end subroutine CalcGamLam
   !****************************************************************************************************
   module Scattering
-    use GlobalVars
     use DataStructures
   contains
-    subroutine CalcK(B,BPD,mu,d,EE,Eth)
+    subroutine CalcK(B,BPD,SD,mu,d,alpha,EE,Eth)
       implicit none
-      type(BoxData) :: B
-      type(BPData) :: BPD
-      double precision mu, EE,rm,d
+      type(BoxData), intent(in) :: B
+      type(BPData), intent(in) :: BPD
+      type(ScatData) :: SD
+      double precision mu, EE,rm,d,alpha
       double precision, allocatable :: s(:),c(:),sp(:),cp(:)
       double precision, allocatable :: Imat(:,:),Jmat(:,:)
       double precision rhypj,rhypy,rhypjp,rhypyp      
@@ -331,6 +382,7 @@ end module DataStructures
       no=0
       nw=0
       nc=0
+
       do i = 1,BPD%NumChannels
          if (EE.ge.Eth(i)) then
             k(i) = dsqrt(2d0*mu*(EE)-Eth(i)) ! k is real
@@ -351,27 +403,39 @@ end module DataStructures
       allocate(sp(no),cp(no))
       do i = 1,no
          !        write(6,*) d, k(i), rm, k(i)*rm,BPD%lam(i)
-         call hyperrjry(int(d),AlphaFactor,BPD%lam(i),k(i)*rm,rhypj,rhypy,rhypjp,rhypyp)
+         call hyperrjry(int(d),alpha,BPD%lam(i),k(i)*rm,rhypj,rhypy,rhypjp,rhypyp)
          s(i) = dsqrt(mu)*rhypj  ! the factor of sqrt(mu) is for energy normalization
          c(i) = -dsqrt(mu)*rhypy ! the factor of sqrt(mu) is for energy normalization
          sp(i) = k(i)*dsqrt(mu)*rhypjp
          cp(i) = -k(i)*dsqrt(mu)*rhypyp
-         write(6,*) i,c(i)*sp(i)-s(i)*cp(i)
+
       enddo
-      
+      Imat=0d0
+      Jmat=0d0
       do i=1,no
          do beta=1,no
-            Imat(i,beta) = (B%Z(i,beta)*cp(i) - B%ZP(i,beta)*c(i))/(s(i)*cp(i)-c(i)*sp(i))
-            Jmat(i,beta) = (B%Z(i,beta)*sp(i) - B%ZP(i,beta)*s(i))/(c(i)*sp(i)-s(i)*cp(i))
+            Imat(i,beta) = (B%Zf(i,beta)*cp(i) - B%Zfp(i,beta)*c(i))/(s(i)*cp(i)-c(i)*sp(i))
+            Jmat(i,beta) = (B%Zf(i,beta)*sp(i) - B%Zfp(i,beta)*s(i))/(c(i)*sp(i)-s(i)*cp(i))
          enddo
       enddo
-      write(6,*) "Imat:"
-      call printmatrix(Imat,no,no,6)
-      write(6,*) "Jmat:"
-      call printmatrix(Jmat,no,no,6)
+!!$      write(6,*) "Imat:"
+!!$      call printmatrix(Imat,no,no,6)
+!!$      write(6,*) "Jmat:"
+!!$      call printmatrix(Jmat,no,no,6)
       call SqrMatInv(Imat, no)
-      B%K = matmul(Jmat,Imat)
-      
+      SD%K = matmul(Jmat,Imat)
+
+      do i=1,B%NumOpenR
+         do j=1,B%NumOpenR
+            SD%R(i,j)=0.0d0
+            do beta = 1, B%NumOpenR
+               SD%R(i,j) = SD%R(i,j) - B%Zf(i,beta)*B%Zf(j,beta)/B%bf(beta) ! 
+            enddo
+         enddo
+      enddo
+
+
+      deallocate(s,c,Imat,Jmat,sp,cp)
     end subroutine CalcK
     
   end module Scattering
@@ -554,7 +618,7 @@ end module DataStructures
         
         implicit none
         type(BPData) BPD
-        type(Morse) M
+        type(Morse), intent(in) :: M
         integer kx,lx,mch,nch,NChan
         double precision ax,bx,xScaledZero,pot(3,3)
         double precision xScale(BPD%xNumPoints)
@@ -591,7 +655,6 @@ end module DataStructures
       double precision E1,E2
       integer NumE, iE
 
-
       do iE=1,NumE
          Egrid(iE) = E1 + (iE-1)*(E2-E1)/(NumE-1)
       enddo
@@ -604,11 +667,12 @@ program main
   use Quadrature
   use MorsePotential
   use scattering
-!  use MatrixElements
+
   implicit none
-  type(BPData) BPD
-  type(GenEigVal) EIG
-  type(BoxData) BA, BB
+  type(BPData) BPD,BPD0
+  type(GenEigVal) EIG,EIG0
+  type(BoxData) BA, BB, Bnull
+  type(ScatData) SD
   type(Morse) :: M
   double precision, allocatable :: evec(:,:), eval(:)!, temp0(:,:)
   double precision, allocatable :: Egrid(:)
@@ -626,31 +690,48 @@ program main
   allocate(xLeg(LegPoints),wLeg(LegPoints))
   call GetGaussFactors(LegendreFile,LegPoints,xLeg,wLeg)
 
-  ! Intitializes some BPD variables to the input values.
+    ! Intitializes some BPD0 variables to the input values.  This is the basis set used at the left edge (r=0)
+  BPD0%NumChannels = NumChannels
+  BPD0%Order = Order
+  BPD0%Left = StartBC
+  BPD0%Right = 2
+  BPD0%xNumPoints = xTotNumPoints
+  BPD0%kl = kStart ! only relevant for Left = 3. This is the normal log-derivative at BPD%xl
+  BPD0%kr = kEnd   ! only relevant for Right = 3. This is the normal log-derivative at BPD%xr
+
+    ! Intitializes some BPD variables to the input values.
   BPD%NumChannels = NumChannels
   BPD%Order = Order
-  BPD%Left = StartBC
-  BPD%Right = EndBC
-  BPD%xNumPoints=xTotNumPoints
+  BPD%Left = 2
+  BPD%Right = 2
+  BPD%xNumPoints = xTotNumPoints
   BPD%kl = kStart ! only relevant for Left = 3. This is the normal log-derivative at BPD%xl
   BPD%kr = kEnd ! only relevant for Right = 3. This is the normal log-derivative at BPD%xr
 
+  
+  call AllocateBPD(BPD0)
+  BPD0%xl=xStart
+  BPD0%xr=xEnd/2d0
+  call GridMakerLinear(BPD0%xNumPoints,BPD0%xl,BPD0%xr,BPD0%xPoints)
+  call Makebasis(BPD0)
+
   call AllocateBPD(BPD)
-  BPD%xl=xStart
+  !BPD%xl=xStart!BPD0%xr
+  BPD%xl=BPD0%xr
   BPD%xr=xEnd
   call GridMakerLinear(BPD%xNumPoints,BPD%xl,BPD%xr,BPD%xPoints)
   call Makebasis(BPD)
 
-  write(6,"(A,T25,2I3)") 'Left BC...', BPD%Left
-  write(6,"(A,T25,2I3)") 'Right BC...', BPD%Right
-  write(6,"(A,T25,2I3)") 'xNumPoints....', BPD%xNumPoints
-  write(6,"(A,T25,2I3)") 'Order....', BPD%Order
-  write(6,"(A,T25,F3.1)") 'EffDim...', EffDim
-  write(6,"(A,T25,F3.1)") 'Energy...', Energy
-  write(6,"(A,T20,F8.4)") 'Reduced mass...', reducedmass
-  write(6,"(A,T20,100F8.4)") 'xPoints...', BPD%xPoints
-  write(6,"(A,T25,2I3)") 'xDim....', BPD%xDim
-  write(6,"(A,T20,I8)") 'MatrixDim...', BPD%MatrixDim      
+!!$  write(6,"(A,T25,2I3)") 'Left BC...', BPD%Left
+!!$  write(6,"(A,T25,2I3)") 'Right BC...', BPD%Right
+!!$  write(6,"(A,T25,2I3)") 'xNumPoints....', BPD%xNumPoints
+!!$  write(6,"(A,T25,2I3)") 'Order....', BPD%Order
+!!$  write(6,"(A,T25,F3.1)") 'EffDim...', EffDim
+!!$  write(6,"(A,T25,F3.1)") 'Energy...', Energy
+!!$  write(6,"(A,T20,F8.4)") 'Reduced mass...', reducedmass
+!!$  write(6,"(A,T20,100F8.4)") 'xPoints...', BPD%xPoints
+!!$  write(6,"(A,T25,2I3)") 'xDim....', BPD%xDim
+!!$  write(6,"(A,T20,I8)") 'MatrixDim...', BPD%MatrixDim      
 
 
   !--------------------------------------------------
@@ -659,8 +740,11 @@ program main
   !call SetBalujaPotential(BPD)
   !call SetZeroPotential(BPD)
   call InitMorse(M)
+
+  call SetMorsePotential(BPD0,M)
   call SetMorsePotential(BPD,M)
-  call checkpot(BPD,100)
+  !call checkpot(BPD0,100)
+  !call checkpot(BPD,101)
   NumE=2000
   allocate(Egrid(NumE))
   call makeEgrid(Egrid,NumE,M%Eth(1)+0.01d0,M%Eth(2)-0.01d0)
@@ -669,52 +753,62 @@ program main
   !----------------------------------------------------------------------------------------------------
   ! Comment/uncomment the next line if you want to print the basis to file fort.300
   !----------------------------------------------------------------------------------------------------
-  !call CheckBasisBP(BPD%xDim,BPD%xNumPoints,BPD%xBounds,BPD%Order,300,LegPoints,BPD%u,BPD%x)
+  !call CheckBasisBP(BPD0%xDim,BPD0%xNumPoints,BPD0%xBounds,BPD0%Order,300,LegPoints,BPD0%u,BPD0%x)
+  call CheckBasisBP(BPD%xDim,BPD%xNumPoints,BPD%xBounds,BPD%Order,301,LegPoints,BPD%u,BPD%x)
 
 !  write(6,*) '--------------------------------'
 !  write(6,*) 'The starting R-Matrix at r=5.d0:'
 !  call printmatrix(RMatBaluja1,3,3,6)
 !  write(6,*) '--------------------------------'
 
-  EIG%MatrixDim=BPD%MatrixDim
+  Bnull%NumOpenL = 0
+  Bnull%NumOpenR = 0
+  Bnull%betaMax = 0
+  
   BA%NumOpenL = 0
   BA%NumOpenR = 3
   BA%betaMax = BA%NumOpenL+BA%NumOpenR
   
-  BB%NumOpenL = 0
+  BB%NumOpenL = 3
   BB%NumOpenR = 3
   BB%betaMax = BB%NumOpenL+BB%NumOpenR
 
+  !call AllocateBox(Bnull)
   call AllocateBox(BA)
   call AllocateBox(BB)
+  call AllocateScat(SD,BB%NumOpenR)
+  
+  EIG0%MatrixDim=BPD0%MatrixDim
+  call AllocateEIG(EIG0)
+  write(6,*) "EIG0%MatrixDim = ",EIG0%MatrixDim
 
+  EIG%MatrixDim=BPD%MatrixDim
   call AllocateEIG(EIG)
+  write(6,*) "EIG%MatrixDim = ",EIG%MatrixDim
 
   do iE = 1, NumE
+
      Energy = Egrid(iE)
+!     call InitZeroBox(BA)
+!     call InitZeroBox(Bnull)
+     call CalcGamLam(BPD0,EIG0)
+     call Mydggev(EIG0%MatrixDim,EIG0%Gam,EIG0%MatrixDim,EIG0%Lam,EIG0%MatrixDim,EIG0%eval,EIG0%evec)
+     call BoxMatch(Bnull, BA, BPD0, EIG0, EffDim, AlphaFactor)
+     call CalcK(BA,BPD0,SD,reducedmass,EffDim,AlphaFactor,Egrid(iE),M%Eth)
+     write(9,*) Energy, SD%K(1,1)
+     
+     call InitZeroBox(BB)
      call CalcGamLam(BPD,EIG)
      call Mydggev(EIG%MatrixDim,EIG%Gam,EIG%MatrixDim,EIG%Lam,EIG%MatrixDim,EIG%eval,EIG%evec)
-     !----------------------------------------------------------------------------------------------------
-     ! use this part to test the free particle solutions
-     ! be sure to change the values of NumOpenL and NumOpenR above
-     call BoxMatch(BA, BB, BPD, EIG)
-     !     write(6,*) "Final R-matrix:"
-     !     call printmatrix(BB%RF,BB%NumOpenR,BB%NumOpenR,6)
-     BB%K=0d0
-     call CalcK(BB,BPD,reducedmass,EffDim,Energy,M%Eth)
-     write(10,*) Energy, BB%K(1,1)
+     call BoxMatch(BA, BB, BPD, EIG, EffDim, AlphaFactor)
+     SD%K=0d0
+     call CalcK(BB,BPD,SD,reducedmass,EffDim,AlphaFactor,Egrid(iE),M%Eth)
+     write(10,*) Energy, SD%K(1,1)
+     write(6,*) Energy, SD%K(1,1)
+
+     
   enddo
   
-  !----------------------------------------------------------------------------------------------------
-  ! be sure to change the values of NumOpenL and NumOpenR above
-!!$  !!use this part for baluja algorithm
-!!$  !BA%RF = RMatBaluja1  
-!!$  !call RProp(BA, BB, BPD, EIG)
-!!$  !write(6,*) "Final R-matrix:"
-!!$  !call printmatrix(BB%RF,BB%NumOpenR,BB%NumOpenR,6)
-
-
-
   !----------------------------------------------------------------------------------------------------
   ! be sure to change the values of NumOpenL and NumOpenR above
   ! use this part for the box-matching algorithm
@@ -737,7 +831,7 @@ program main
 
 !!$  BA%b = -1.d0/BA%b
 !!$  BA%bf = BA%b
-!!$  call BoxMatch(BA, BB, BPD, EIG)
+!!$  call BoxMatch(BA, BB, BPD, EIG, EffDim,AlphaFactor)
 !!$  write(6,*) "Final R-matrix:"
 !!$  call printmatrix(BB%RF/xEnd,BB%NumOpenR,BB%NumOpenR,6)
   !call printmatrix(BB%RF,BB%NumOpenR,BB%NumOpenR,6)
@@ -747,8 +841,6 @@ program main
 !!$
 
 !  call checkbessel(0.0001d0,10d0,100,1d0,3,100)
-  
-
   
 
 20 format(1P,100e14.8)
@@ -781,30 +873,30 @@ subroutine GridMakerLinear(xNumPoints,x1,x2,xPoints)
   enddo
 end subroutine GridMakerLinear
 !****************************************************************************************************
+subroutine BoxMatch(BA, BB, BPD, EIG, dim, alphafact)
+  use DataStructures
+  implicit none
+  type(BPData), intent(in) :: BPD
+  type(GenEigVal), intent(in) :: EIG
+  type(BoxData), intent(in) :: BA
+  type(BoxData) BB
+  
+  double precision, allocatable :: tempnorm(:,:),  temp0(:,:), ZT(:,:)
+  double precision, allocatable :: BigZA(:,:), BigZB(:,:),Dvec(:,:)
+  double precision, allocatable :: Dval(:)
+  integer, allocatable :: Dikeep(:)
+  double precision NewNorm, dim, alphafact
+  integer i,j,k,beta,betaprime,nch,mch!,betamax
+  integer ikeep(BB%betaMax)
+  
 
-!****************************************************************************************************
-  subroutine BoxMatch(BA, BB, BPD, EIG)
-    use DataStructures
-    use GlobalVars
-    implicit none
-    type(BPData), intent(in) :: BPD
-    type(GenEigVal), intent(in) :: EIG
-    type(BoxData), intent(in) :: BA
-    type(BoxData) BB
-    double precision, allocatable :: tempnorm(:,:), temp1(:,:), temp2(:,:), temp0(:,:), ZT(:,:),tempR(:,:)
-    double precision, allocatable :: BigZA(:,:), BigZB(:,:),Dvec(:,:),bfinal(:)
-    integer, allocatable :: Dikeep(:)
-    double precision NewNorm
-    integer i,j,k,beta,betaprime,nch,mch!,betamax
-    integer, allocatable :: ikeep(:)
-    
-    allocate(ikeep(BPD%MatrixDim))
 !    call printmatrix(EIG%eval,BPD%MatrixDim,1,6)
     j=1
     ikeep = 0
     do i = 1, BPD%MatrixDim
        if(abs(EIG%eval(i)).ge.1e-12) then
-          write(6,"(A,T20,I5,T30,E12.6)") 'eval',i, EIG%eval(i)
+          !write(6,"(A,T20,I5,T30,E12.6)") 'eval',i, EIG%eval(i)
+          BB%b(j) = EIG%eval(i)
           ikeep(j)=i
           j = j+1
        endif
@@ -830,79 +922,75 @@ end subroutine GridMakerLinear
        !write(6,*) 'norm(beta,beta)=',BB%Norm(beta,beta),'Nbeta(',beta,') = ',BB%Nbeta(beta) ! 
     enddo
 
-    write(6,*) "Norm matrix:"
-    call printmatrix(BB%Norm,BB%betaMax,BB%betaMax,6)
-
+    !write(6,*) "Norm matrix:"
+    !call printmatrix(BB%Norm,BB%betaMax,BB%betaMax,6)
 
     do beta = 1,BB%betaMax
        do i = 1,BB%NumOpenL
-          BB%Z(i,beta) = EIG%evec((i-1)*BPD%xDim + 1, ikeep(beta))/BB%Nbeta(beta)!
-          !BB%Z(i,beta) = BPD%xl**(EffDim-1d0-2d0*AlphaFactor)*EIG%evec((i-1)*BPD%xDim + 1, ikeep(beta))/BB%Nbeta(beta)!
-          !BB%Z(i,beta) = BPD%xl**(0.5d0*(EffDim-1d0-2d0*AlphaFactor))*&
-          !     EIG%evec((i-1)*BPD%xDim + 1, ikeep(beta))/BB%Nbeta(beta)! 
-          BB%ZP(i,beta) = EIG%eval(ikeep(beta))*BB%Z(i,beta)
+          BB%Z(i,beta) = BPD%xl**(0.5d0*(dim-1d0-2d0*alphafact))*&
+               EIG%evec((i-1)*BPD%xDim + 1, ikeep(beta))/BB%Nbeta(beta)! 
+          BB%ZP(i,beta) = -BB%b(beta)*BB%Z(i,beta)
        enddo
        do i = 1, BB%NumOpenR
-          BB%Z(i+BB%NumOpenL,beta) = EIG%evec((i-1)*BPD%xDim + BPD%xDim,ikeep(beta))/BB%Nbeta(beta) !
-          !BB%Z(i+BB%NumOpenL,beta) = BPD%xr**(EffDim-1d0-2d0*AlphaFactor)&
-          !     *EIG%evec((i-1)*BPD%xDim + BPD%xDim,ikeep(beta))/BB%Nbeta(beta) !
-          !BB%Z(i+BB%NumOpenL,beta) = BPD%xr**(0.5d0*(EffDim-1d0-2d0*AlphaFactor))*&
-          !     EIG%evec((i-1)*BPD%xDim + BPD%xDim,ikeep(beta))/BB%Nbeta(beta) ! 
-          BB%ZP(i+BB%NumOpenL,beta) = -EIG%eval(ikeep(beta))*BB%Z(i+BB%NumOpenL,beta)
+          BB%Z(i+BB%NumOpenL,beta) = BPD%xr**(0.5d0*(dim-1d0-2d0*alphafact))*&
+               EIG%evec((i-1)*BPD%xDim + BPD%xDim,ikeep(beta))/BB%Nbeta(beta) ! 
+          BB%ZP(i+BB%NumOpenL,beta) = -BB%b(beta)*BB%Z(i+BB%NumOpenL,beta)
        enddo
     enddo
     
     allocate(ZT(BB%betaMax,BB%betaMax))
-    write(6,*) "Z:"
-    call printmatrix(BB%Z,BB%betaMax,BB%betaMax,6)
+    !write(6,*) "Z:"
+!    call printmatrix(BB%Z,BB%betaMax,BB%betaMax,6)
 !    call printmatrix(BB%ZP,BB%betaMax,BB%betaMax,6)
 
     allocate(temp0(BB%betaMax,BB%betaMax))
     ZT = BB%Z
     temp0 = 0d0
-    call dgemm('T','N',BB%betaMax,BB%betaMax,BB%betaMax,1.0d0,ZT,BB%betaMax,BB%Z,BB%betaMax,0.0d0,temp0,BB%betaMax) !
+    temp0 = matmul(transpose(ZT),BB%Z)
+    !call dgemm('T','N',BB%betaMax,BB%betaMax,BB%betaMax,1.0d0,ZT,BB%betaMax,BB%Z,BB%betaMax,0.0d0,temp0,BB%betaMax) !
 
     write(6,*) "Check norm:"
     call printmatrix(temp0,BB%betaMax,BB%betaMax,6)
 
     allocate(Dikeep(BB%betaMax + BB%NumOpenL))
     allocate(BigZA(BB%NumOpenL + BB%betaMax,BB%NumOpenL+BB%betaMax),BigZB(BB%NumOpenL+BB%betaMax,BB%NumOpenL+BB%betaMax)) ! 
-    allocate(Dvec(BB%NumOpenL+BB%betaMax,BB%NumOpenL+BB%betaMax),bfinal(BB%NumOpenL+BB%betaMax)) ! 
+    allocate(Dvec(BB%NumOpenL+BB%betaMax,BB%NumOpenL+BB%betaMax))
+    allocate(Dval(BB%NumOpenL+BB%betaMax))
+
+    Dvec=0d0
     BigZA=0d0
     BigZB=0d0
     
     do i=1,BB%NumOpenL
        do beta=1,BB%NumOpenL
           BigZA(i,beta)=BA%Zf(i,beta)
-       enddo
-       do beta=1,BB%NumOpenL
-          BigZA(i+BB%NumOpenL,beta)=BA%Zf(i,beta)*BA%bf(beta) ! 
+          BigZA(i+BB%NumOpenL,beta)=BA%Zfp(i,beta)
+          !write(6,*) "using BA%Z(), BA%ZP= = ",BA%Zf(i,beta), -BA%Zfp(i,beta),BA%Zf(i,beta)*BA%bf(beta)
        enddo
     enddo
-  
-    
+      
     do i=1,BB%NumOpenL
        do beta=1,BB%betaMax
           BigZA(i, BB%NumOpenL+beta) = -BB%Z(i,beta)
-          BigZA(i+BB%NumOpenL,beta+BB%NumOpenL) = BB%Z(i,beta)*EIG%eval(ikeep(beta))
+          BigZA(i+BB%NumOpenL,beta+BB%NumOpenL) = BB%ZP(i,beta)
        enddo
     enddo
     
     do i=1,BB%NumOpenR
        do beta=1,BB%betaMax
-          BigZA(i+2*BB%NumOpenL, BB%NumOpenL+beta)=BB%Z(i+BB%NumOpenL,beta)*EIG%eval(ikeep(beta))
+          BigZA(i+2*BB%NumOpenL, BB%NumOpenL+beta)=-BB%ZP(i+BB%NumOpenL,beta)
           BigZB(i+2*BB%NumOpenL, BB%NumOpenL+beta)=BB%Z(i+BB%NumOpenL,beta)
        enddo
     enddo
     
-    print*, 'BigZA : '
-    call printmatrix(BigZA, BB%NumOpenL+BB%betaMax, BB%NumOpenL+BB%betaMax,6)
-    print*, 'BigZB : '
-    call printmatrix(BigZB, BB%NumOpenL+BB%betaMax, BB%NumOpenL+BB%betaMax,6)
+    !print*, 'BigZA : '
+    !call printmatrix(BigZA, BB%NumOpenL+BB%betaMax, BB%NumOpenL+BB%betaMax,6)
+    !print*, 'BigZB : '
+    !call printmatrix(BigZB, BB%NumOpenL+BB%betaMax, BB%NumOpenL+BB%betaMax,6)
 
-    call Mydggev(BB%NumOpenL+BB%betaMax,BigZA,BB%NumOpenL+BB%betaMax,BigZB,BB%NumOpenL+BB%betaMax,BB%b,Dvec) !
-    print*, 'b : '
-    call printmatrix(BB%b,BB%NumOpenL+BB%betaMax,1,6)
+    call Mydggev(BB%NumOpenL+BB%betaMax,BigZA,BB%NumOpenL+BB%betaMax,BigZB,BB%NumOpenL+BB%betaMax,Dval,Dvec) !
+    !print*, 'Eigenvalues of box-matching eigenproblem : '
+    !call printmatrix(Dval,BB%NumOpenL+BB%betaMax,1,6)
     
 !!$    print*, 'Dvec : '
 !!$    do j = 1,BB%betaMax
@@ -910,21 +998,20 @@ end subroutine GridMakerLinear
 !!$    enddo
     j=1
     do i = 1,BB%NumOpenL+BB%betaMax
-       if(abs(BB%b(i)).ge.1e-12) then
+       if(abs(Dval(i)).ge.1e-12) then
           Dikeep(j)=i
-          BB%bf(j)=BB%b(i)
+          BB%bf(j)=Dval(i)
           !write(6,*) i, j, BB%bf(j), (Dvec(k,i), k=BB%NumOpenL+1,BB%NumOpenL+BB%betaMax)
           j=j+1
        endif
     enddo
-    print*, 'Final Number of Channels : ',j-1
+    !print*, 'Final Number of Channels : ',j-1, "should be ",BB%NumOpenR
     do beta=1,BB%NumOpenR
        !for each beta, construct the final state with constant log-derivative at the right boundary
        !write(6,*) "beta value being calculated now is: ", beta, BB%bf(beta)
        do i=1, BB%NumOpenR
           BB%Zf(i,beta) = 0.0d0
           do betaprime = 1,BB%betaMax
-
              BB%Zf(i,beta) =  BB%Zf(i,beta) + BB%Z(BB%NumOpenL+i,betaprime)*Dvec(BB%NumOpenL+betaprime,Dikeep(beta)) !
              !write(6,*) "adding...",BB%NumOpenL+i, betaprime, BB%Z(BB%NumOpenL+i,betaprime),"*",&
              !     Dvec(BB%NumOpenL+betaprime,Dikeep(beta))
@@ -937,8 +1024,7 @@ end subroutine GridMakerLinear
           NewNorm=NewNorm+BB%Zf(i,beta)**2
        enddo
        NewNorm=dsqrt(NewNorm)
-       
-       ! normalize
+       ! normalize and set the derivative Zfp
        do i=1,BB%NumOpenR
           BB%Zf(i,beta) = BB%Zf(i,beta)/NewNorm
           BB%Zfp(i,beta) = -BB%Zf(i,beta)*BB%bf(beta)
@@ -946,24 +1032,12 @@ end subroutine GridMakerLinear
     enddo
     print*, 'Dvec : '
     call printmatrix(Dvec,BB%NumOpenL+BB%betaMax,BB%NumOpenL+BB%betaMax,6)
-    print*, 'Zf'
-    call printmatrix(BB%Zf,BB%NumOpenR,BB%NumOpenR,6)
-    deallocate(Dikeep,Dvec,BigZA,BigZB)         
-    
-    do i=1,BB%NumOpenR
-         do j=1,BB%NumOpenR
-            BB%RF(i,j)=0.0d0
-            do beta = 1, BB%NumOpenR
-               BB%RF(i,j) = BB%RF(i,j) - BB%Zf(i,beta)*BB%Zf(j,beta)/BB%bf(beta) ! 
-            enddo
-         enddo
-      enddo
+    !print*, 'Zf'
+    !call printmatrix(BB%Zf,BB%NumOpenR,BB%NumOpenR,6)
 
+    deallocate(Dikeep,Dvec,Dval,BigZA,BigZB)         
     deallocate(temp0)
-
-    deallocate(ikeep)
     deallocate(tempnorm)
-
     deallocate(ZT)
   end subroutine BoxMatch
 
