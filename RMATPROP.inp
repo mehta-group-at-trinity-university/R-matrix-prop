@@ -5,10 +5,10 @@ mass1		mass2		mass3		mass4
 1.d0		1.d0		-		-
 
 xMin		xMax		xNumPoints 	LegPoints
-0d0		20d0		30		10
+0d0	  	20d0		8	       	10
 
 NumSectors	Left		Right		kStart		kEnd
-1		0		2		1d20		1d20
+3		0		2		1d20		1d20
 
 Energy
 2.5d0
