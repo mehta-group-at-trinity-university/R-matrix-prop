@@ -424,7 +424,7 @@ end module DataStructures
 !!$      call printmatrix(Jmat,no,no,6)
       call SqrMatInv(Imat, no)
       SD%K = matmul(Jmat,Imat)
-
+      write(6,*) "B%NumOpenR = ", B%NumOpenR
       do i=1,B%NumOpenR
          do j=1,B%NumOpenR
             SD%R(i,j)=0.0d0
@@ -433,7 +433,8 @@ end module DataStructures
             enddo
          enddo
       enddo
-
+      !call sqrmatinv(BB%Zfp,BB%NumOpenR)  This gives the same result as the code segment  executed above
+      !SD%R = matmul(BB%Zf,BB%Zfp)
 
       deallocate(s,c,Imat,Jmat,sp,cp)
     end subroutine CalcK
@@ -489,19 +490,19 @@ end module DataStructures
       BalujaMCmat(3,1,2)=0.0d0
       BalujaMCmat(3,2,2)=0.0d0
       BalujaMCmat(3,3,2)=0.0d0
-      
+
+      !THe starting R-matrix
       RMatBaluja1(1,1) = 0.145599d0
       RMatBaluja1(1,2) = 0.00559130d0
       RMatBaluja1(1,3) = 0.000514900d0
-
       RMatBaluja1(2,1) = 0.00559130d0
       RMatBaluja1(2,2) = -0.00811540d0
       RMatBaluja1(2,3) = -0.01735370d0
-
       RMatBaluja1(3,1) = 0.000514900d0
       RMatBaluja1(3,2) = -0.01735370d0
       RMatBaluja1(3,3) = 0.00829450d0
-      
+
+      !The ending R-matrix
       RMatBaluja2(1,1) = -0.392776d0
       RMatBaluja2(1,2) = -0.0134222d0
       RMatBaluja2(1,3) = -0.00283486d0
@@ -559,11 +560,11 @@ end module DataStructures
       reducedmass = 1.d0
       BalujaPotential = 0d0
       do Lam = 1,2
-         BalujaPotential = BalujaPotential - BalujaMCmat(mch,nch,Lam)*R**(-Lam-1d0)/(2.d0*reducedmass)
+         BalujaPotential = BalujaPotential + BalujaMCmat(mch,nch,Lam)*R**(-Lam-1d0)/(2.d0*reducedmass)
       enddo
       if(mch.eq.nch) then
          BalujaPotential = BalujaPotential + &
-              lmom(mch)*(lmom(mch)+1)/(2d0*reducedmass*R**2) - Znet/R + BalujaEth(mch)/(2.d0*reducedmass) !
+              lmom(mch)*(lmom(mch)+1d0)/(2d0*reducedmass*R**2) - Znet/R + BalujaEth(mch)/(2.d0*reducedmass) !
       end if
       
       return
@@ -676,7 +677,7 @@ program main
   type(Morse) :: M
   double precision, allocatable :: evec(:,:), eval(:)!, temp0(:,:)
   double precision, allocatable :: Egrid(:)
-  integer NumE, iE
+  integer NumE, iE, beta, i
   
   !----------------------------------------------------------------------
   ! Read information from the input file
@@ -745,7 +746,7 @@ program main
   call SetMorsePotential(BPD,M)
   !call checkpot(BPD0,100)
   !call checkpot(BPD,101)
-  NumE=2000
+  NumE=1000
   allocate(Egrid(NumE))
   call makeEgrid(Egrid,NumE,M%Eth(1)+0.01d0,M%Eth(2)-0.01d0)
   
@@ -773,10 +774,10 @@ program main
   BB%NumOpenR = 3
   BB%betaMax = BB%NumOpenL+BB%NumOpenR
 
-  !call AllocateBox(Bnull)
+  call AllocateBox(Bnull)
   call AllocateBox(BA)
   call AllocateBox(BB)
-  call AllocateScat(SD,BB%NumOpenR)
+
   
   EIG0%MatrixDim=BPD0%MatrixDim
   call AllocateEIG(EIG0)
@@ -789,14 +790,17 @@ program main
   do iE = 1, NumE
 
      Energy = Egrid(iE)
-!     call InitZeroBox(BA)
-!     call InitZeroBox(Bnull)
+     call InitZeroBox(BA)
+     call InitZeroBox(Bnull)
+     call AllocateScat(SD,BA%NumOpenR)
      call CalcGamLam(BPD0,EIG0)
      call Mydggev(EIG0%MatrixDim,EIG0%Gam,EIG0%MatrixDim,EIG0%Lam,EIG0%MatrixDim,EIG0%eval,EIG0%evec)
      call BoxMatch(Bnull, BA, BPD0, EIG0, EffDim, AlphaFactor)
      call CalcK(BA,BPD0,SD,reducedmass,EffDim,AlphaFactor,Egrid(iE),M%Eth)
      write(9,*) Energy, SD%K(1,1)
+     call DeAllocateScat(SD)
      
+     call AllocateScat(SD,BB%NumOpenR)
      call InitZeroBox(BB)
      call CalcGamLam(BPD,EIG)
      call Mydggev(EIG%MatrixDim,EIG%Gam,EIG%MatrixDim,EIG%Lam,EIG%MatrixDim,EIG%eval,EIG%evec)
@@ -805,40 +809,73 @@ program main
      call CalcK(BB,BPD,SD,reducedmass,EffDim,AlphaFactor,Egrid(iE),M%Eth)
      write(10,*) Energy, SD%K(1,1)
      write(6,*) Energy, SD%K(1,1)
-
+     call DeAllocateScat(SD)
      
   enddo
-  
+
+  call DeAllocateBPD(BPD)
+  call DeAllocateEIG(EIG)
   !----------------------------------------------------------------------------------------------------
   ! be sure to change the values of NumOpenL and NumOpenR above
   ! use this part for the box-matching algorithm
-!!$  BPD%Left = 2
-!!$  BPD%Right = 2
+  BPD%Left = 2
+  BPD%Right = 2
 !!$
-!!$  call Makebasis(BPD)
-!!$  
-!!$  BB%NumOpenL = 3
-!!$  BB%NumOpenR = 3
-!!$  BB%NumOpen = 6
-!!$  BB%betaMax = 6
-!!$  xstart = 5d0
-!!$  xend = 15d0
-!!$  
-!!$  BA%RF = xStart*RMatBaluja1
-!!$  !BA%RF = RMatBaluja1  
-!!$  call MYDSYEV(BA%RF,BA%betaMax,BA%b,BA%Z)
-!!$  BA%Zf=BA%Z
 
-!!$  BA%b = -1.d0/BA%b
-!!$  BA%bf = BA%b
-!!$  call BoxMatch(BA, BB, BPD, EIG, EffDim,AlphaFactor)
-!!$  write(6,*) "Final R-matrix:"
-!!$  call printmatrix(BB%RF/xEnd,BB%NumOpenR,BB%NumOpenR,6)
-  !call printmatrix(BB%RF,BB%NumOpenR,BB%NumOpenR,6)
-!!$
-!!$  write(6,*) "The Exact R-Matrix From Baluja et al at R=15.0 is:"
-!!$  call printmatrix(RMatBaluja2,3,3,6)
-!!$
+  BA%NumOpenL = 0
+  BA%NumOpenR = 3
+  BA%betaMax = BA%NumOpenL+BA%NumOpenR
+
+  BB%NumOpenL = 3
+  BB%NumOpenR = 3
+  energy = 2.5d0
+  BB%betaMax = 6
+  xstart = 5d0
+  xend = 5d0+10d0
+
+  reducedmass = 1d0
+  
+  EIG%MatrixDim=BPD%MatrixDim
+  call InitZeroBox(BA)
+  call InitZeroBox(BB)
+  call AllocateScat(SD,BA%NumOpenR)
+  call AllocateBPD(BPD)
+  BPD%xl=xStart
+  BPD%xr=xEnd
+  call GridMakerLinear(BPD%xNumPoints,BPD%xl,BPD%xr,BPD%xPoints)
+  call Makebasis(BPD)
+  call SetBalujaPotential(BPD)
+  call checkpot(BPD,101)
+  call AllocateEIG(EIG)
+  
+  write(6,*) "EIG%MatrixDim = ",EIG%MatrixDim
+
+  call MYDSYEV(xStart*RMatBaluja1,BA%betaMax,BA%b,BA%Z)
+  BA%Zf=BA%Z
+  BA%b = -1.d0/BA%b
+  BA%bf = BA%b
+  do beta = 1,BA%betaMax
+     do i = 1,BA%NumOpenR
+        BA%ZfP(i,beta) = -BA%bf(beta)*BA%Zf(i,beta)
+     enddo
+  enddo
+
+  write(6,*) "calculating gamma for baluja problem"
+  call CalcGamLam(BPD,EIG)
+  call Mydggev(EIG%MatrixDim,EIG%Gam,EIG%MatrixDim,EIG%Lam,EIG%MatrixDim,EIG%eval,EIG%evec)
+  call BoxMatch(BA, BB, BPD, EIG, EffDim,AlphaFactor)
+  call CalcK(BB,BPD,SD,reducedmass,EffDim,AlphaFactor,Energy,BalujaEth)
+
+  write(6,*) "The initial R-Matrix is:"
+  call printmatrix(RMatBaluja1,3,3,6)
+  write(6,*) "Final R-matrix:"
+
+  call printmatrix(SD%R/xEnd,BB%NumOpenR,BB%NumOpenR,6)
+!!$  !call printmatrix(BB%RF,BB%NumOpenR,BB%NumOpenR,6)
+
+  write(6,*) "The Exact R-Matrix From Baluja et al at R=15.0 is:"
+  call printmatrix(RMatBaluja2,3,3,6)
+
 
 !  call checkbessel(0.0001d0,10d0,100,1d0,3,100)
   
