@@ -423,7 +423,7 @@ END MODULE DataStructures
 !!$      call printmatrix(Jmat,no,no,6)
       CALL SqrMatInv(Imat, no)
       SD%K = MATMUL(Jmat,Imat)
-      WRITE(6,*) "B%NumOpenR = ", B%NumOpenR
+      !WRITE(6,*) "B%NumOpenR = ", B%NumOpenR
       DO i=1,B%NumOpenR
          DO j=1,B%NumOpenR
             SD%R(i,j)=0.0d0
@@ -750,9 +750,9 @@ PROGRAM main
 
   !call checkpot(BPD0,100)
   !call checkpot(BPD,101)
-  NumE=1000
+  NumE=2000
   ALLOCATE(Egrid(NumE))
-  CALL makeEgrid(Egrid,NumE,M%Eth(1)+0.01d0,M%Eth(2)-0.01d0)
+  CALL makeEgrid(Egrid,NumE,M%Eth(2)+0.01d0,M%Eth(3)-0.01d0)
 
   !----------------------------------------------------------------------------------------------------
   ! Comment/uncomment the next line if you want to print the basis to file fort.300
@@ -767,45 +767,42 @@ PROGRAM main
   CALL AllocateEIG(EIG0)
   WRITE(6,*) "EIG0%MatrixDim = ",EIG0%MatrixDim
 
+  EIG%MatrixDim=BPD%MatrixDim
+  CALL AllocateEIG(EIG)
+  WRITE(6,*) "EIG%MatrixDim = ",EIG%MatrixDim
 
-
+  CALL AllocateScat(SD,Boxes(NumBoxes)%NumOpenR)
 
   DO iE = 1, NumE
     Energy = Egrid(iE)
     DO iBox = 1, NumBoxes
+
       IF(iBox.eq.1) THEN
-        CALL AllocateScat(SD,Boxes(iBox)%NumOpenR)
+
         CALL CalcGamLam(BPD0,EIG0)
         CALL Mydggev(EIG0%MatrixDim,EIG0%Gam,EIG0%MatrixDim,EIG0%Lam,EIG0%MatrixDim,EIG0%eval,EIG0%evec)
         CALL BoxMatch(Bnull, Boxes(iBox), BPD0, EIG0, EffDim, AlphaFactor)
         CALL CalcK(Boxes(iBox),BPD0,SD,reducedmass,EffDim,AlphaFactor,Egrid(iE),M%Eth)
-        WRITE(9,*) Energy, SD%K(1,1)
-        WRITE(6,*) "K-matrix:"
-        WRITE(6,*) Energy, SD%K(1,1)
-        CALL DeAllocateScat(SD)
-      ELSE
 
+      ELSE
         BPD%xl=Boxes(iBox)%xl
         BPD%xr=Boxes(iBox)%xr
-
         CALL GridMakerLinear(BPD%xNumPoints,BPD%xl,BPD%xr,BPD%xPoints)
         CALL Makebasis(BPD)
-        EIG%MatrixDim=BPD%MatrixDim
-        CALL AllocateEIG(EIG)
-        WRITE(6,*) "EIG%MatrixDim = ",EIG%MatrixDim
         CALL SetMorsePotential(BPD,M)
-        CALL AllocateScat(SD,Boxes(iBox)%NumOpenR)
+
         CALL CalcGamLam(BPD,EIG)
         CALL Mydggev(EIG%MatrixDim,EIG%Gam,EIG%MatrixDim,EIG%Lam,EIG%MatrixDim,EIG%eval,EIG%evec)
         CALL BoxMatch(Boxes(iBox-1), Boxes(iBox), BPD, EIG, EffDim, AlphaFactor)
         SD%K=0d0
         CALL CalcK(Boxes(iBox),BPD,SD,reducedmass,EffDim,AlphaFactor,Egrid(iE),M%Eth)
-        WRITE(10,*) Energy, SD%K(1,1)
-        WRITE(6,*) Energy, SD%K(1,1)
-        CALL DeAllocateScat(SD)
-        call DeAllocateEIG(EIG)
+
+
+
       ENDIF
     ENDDO
+    write(6,*) "K-matrix:", SD%K
+    WRITE(10,*) Energy, SD%K
   ENDDO
 
   CALL DeAllocateBPD(BPD)
@@ -831,7 +828,7 @@ PROGRAM main
 !   reducedmass = 1d0
 !
 !   EIG%MatrixDim=BPD%MatrixDim
-!   CALL InitZeroBox(BA)
+!   CALL Boxes(ieroBox(BA)
 !   CALL InitZeroBox(BB)
 !   CALL AllocateScat(SD,BA%NumOpenR)
 !   CALL AllocateBPD(BPD)
@@ -981,8 +978,8 @@ SUBROUTINE BoxMatch(BA, BB, BPD, EIG, dim, alphafact)
     temp0 = MATMUL(TRANSPOSE(ZT),BB%Z)
     !call dgemm('T','N',BB%betaMax,BB%betaMax,BB%betaMax,1.0d0,ZT,BB%betaMax,BB%Z,BB%betaMax,0.0d0,temp0,BB%betaMax) !
 
-    WRITE(6,*) "Check norm:"
-    CALL printmatrix(temp0,BB%betaMax,BB%betaMax,6)
+    !WRITE(6,*) "Check norm:"
+    !CALL printmatrix(temp0,BB%betaMax,BB%betaMax,6)
 
     ALLOCATE(Dikeep(BB%betaMax + BB%NumOpenL))
     ALLOCATE(BigZA(BB%NumOpenL + BB%betaMax,BB%NumOpenL+BB%betaMax),BigZB(BB%NumOpenL+BB%betaMax,BB%NumOpenL+BB%betaMax)) !
@@ -1062,8 +1059,8 @@ SUBROUTINE BoxMatch(BA, BB, BPD, EIG, dim, alphafact)
           BB%Zfp(i,beta) = -BB%Zf(i,beta)*BB%bf(beta)
        ENDDO
     ENDDO
-    PRINT*, 'Dvec : '
-    CALL printmatrix(Dvec,BB%NumOpenL+BB%betaMax,BB%NumOpenL+BB%betaMax,6)
+    !PRINT*, 'Dvec : '
+    !CALL printmatrix(Dvec,BB%NumOpenL+BB%betaMax,BB%NumOpenL+BB%betaMax,6)
     !print*, 'Zf'
     !call printmatrix(BB%Zf,BB%NumOpenR,BB%NumOpenR,6)
 
