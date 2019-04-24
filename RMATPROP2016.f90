@@ -746,6 +746,9 @@ PROGRAM main
   CALL GridMakerLinear(BPD1%xNumPoints,BPD1%xl,BPD1%xr,BPD1%xPoints)
   CALL Makebasis(BPD1)
 
+  CALL GridMakerLinear(BPD%xNumPoints,-1d0,1d0,BPD%xPoints)
+  CALL MakeBasis(BPD)
+
   CALL InitMorse(M)
 
   !call checkpot(BPD1,100)
