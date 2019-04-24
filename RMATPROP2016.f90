@@ -775,16 +775,12 @@ PROGRAM main
 
   DO iE = 1, NumE
     Energy = Egrid(iE)
-    DO iBox = 1, NumBoxes
-
-      IF(iBox.eq.1) THEN
-
-        CALL CalcGamLam(BPD0,EIG0)
-        CALL Mydggev(EIG0%MatrixDim,EIG0%Gam,EIG0%MatrixDim,EIG0%Lam,EIG0%MatrixDim,EIG0%eval,EIG0%evec)
-        CALL BoxMatch(Bnull, Boxes(iBox), BPD0, EIG0, EffDim, AlphaFactor)
-        CALL CalcK(Boxes(iBox),BPD0,SD,reducedmass,EffDim,AlphaFactor,Egrid(iE),M%Eth)
-
-      ELSE
+    iBox = 1
+    CALL CalcGamLam(BPD0,EIG0)
+    CALL Mydggev(EIG0%MatrixDim,EIG0%Gam,EIG0%MatrixDim,EIG0%Lam,EIG0%MatrixDim,EIG0%eval,EIG0%evec)
+    CALL BoxMatch(Bnull, Boxes(iBox), BPD0, EIG0, EffDim, AlphaFactor)
+    CALL CalcK(Boxes(iBox),BPD0,SD,reducedmass,EffDim,AlphaFactor,Egrid(iE),M%Eth)
+    DO iBox = 2, NumBoxes
         BPD%xl=Boxes(iBox)%xl
         BPD%xr=Boxes(iBox)%xr
         CALL GridMakerLinear(BPD%xNumPoints,BPD%xl,BPD%xr,BPD%xPoints)
@@ -796,10 +792,6 @@ PROGRAM main
         CALL BoxMatch(Boxes(iBox-1), Boxes(iBox), BPD, EIG, EffDim, AlphaFactor)
         SD%K=0d0
         CALL CalcK(Boxes(iBox),BPD,SD,reducedmass,EffDim,AlphaFactor,Egrid(iE),M%Eth)
-
-
-
-      ENDIF
     ENDDO
     write(6,*) "K-matrix:", SD%K
     WRITE(10,*) Energy, SD%K
