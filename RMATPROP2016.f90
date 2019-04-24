@@ -669,8 +669,8 @@ PROGRAM main
   USE scattering
 
   IMPLICIT NONE
-  TYPE(BPData) BPD,BPD0
-  TYPE(GenEigVal) EIG,EIG0
+  TYPE(BPData) BPD,BPD1
+  TYPE(GenEigVal) EIG,EIG1
   TYPE(BoxData) BA, BB, Bnull
   TYPE(BoxData), ALLOCATABLE :: Boxes(:)
   TYPE(ScatData) SD
@@ -719,14 +719,14 @@ PROGRAM main
     CALL printmatrix(Boxes(i)%Zf,Boxes(i)%NumOpenR,Boxes(i)%NumOpenR,6)
   ENDDO
 
-    ! Intitializes some BPD0 variables to the input values.  This is the basis set used at the left edge (r=0)
-  BPD0%NumChannels = NumChannels
-  BPD0%Order = Order
-  BPD0%Left = 0
-  BPD0%Right = 2
-  BPD0%xNumPoints = xTotNumPoints
-  BPD0%kl = kStart ! only relevant for Left = 3. This is the normal log-derivative at BPD%xl
-  BPD0%kr = kEnd   ! only relevant for Right = 3. This is the normal log-derivative at BPD%xr
+    ! Intitializes some BPD1 variables to the input values.  This is the basis set used at the left edge (r=0)
+  BPD1%NumChannels = NumChannels
+  BPD1%Order = Order
+  BPD1%Left = 0
+  BPD1%Right = 2
+  BPD1%xNumPoints = xTotNumPoints
+  BPD1%kl = kStart ! only relevant for Left = 3. This is the normal log-derivative at BPD%xl
+  BPD1%kr = kEnd   ! only relevant for Right = 3. This is the normal log-derivative at BPD%xr
 
     ! Intitializes some BPD variables to the input values.
   BPD%NumChannels = NumChannels
@@ -738,17 +738,17 @@ PROGRAM main
   BPD%kr = kEnd ! only relevant for Right = 3. This is the normal log-derivative at BPD%xr
 
 
-  CALL AllocateBPD(BPD0)
+  CALL AllocateBPD(BPD1)
   CALL AllocateBPD(BPD)
 
-  BPD0%xl=Boxes(1)%xl
-  BPD0%xr=Boxes(1)%xr
-  CALL GridMakerLinear(BPD0%xNumPoints,BPD0%xl,BPD0%xr,BPD0%xPoints)
-  CALL Makebasis(BPD0)
+  BPD1%xl=Boxes(1)%xl
+  BPD1%xr=Boxes(1)%xr
+  CALL GridMakerLinear(BPD1%xNumPoints,BPD1%xl,BPD1%xr,BPD1%xPoints)
+  CALL Makebasis(BPD1)
 
   CALL InitMorse(M)
 
-  !call checkpot(BPD0,100)
+  !call checkpot(BPD1,100)
   !call checkpot(BPD,101)
   NumE=2000
   ALLOCATE(Egrid(NumE))
@@ -757,15 +757,14 @@ PROGRAM main
   !----------------------------------------------------------------------------------------------------
   ! Comment/uncomment the next line if you want to print the basis to file fort.300
   !----------------------------------------------------------------------------------------------------
-  !call CheckBasisBP(BPD0%xDim,BPD0%xNumPoints,BPD0%xBounds,BPD0%Order,300,LegPoints,BPD0%u,BPD0%x)
+  !call CheckBasisBP(BPD1%xDim,BPD1%xNumPoints,BPD1%xBounds,BPD1%Order,300,LegPoints,BPD1%u,BPD1%x)
   !CALL CheckBasisBP(BPD%xDim,BPD%xNumPoints,BPD%xBounds,BPD%Order,301,LegPoints,BPD%u,BPD%x)
 
-  CALL SetMorsePotential(BPD0,M)
+  CALL SetMorsePotential(BPD1,M)
 
-
-  EIG0%MatrixDim=BPD0%MatrixDim
-  CALL AllocateEIG(EIG0)
-  WRITE(6,*) "EIG0%MatrixDim = ",EIG0%MatrixDim
+  EIG1%MatrixDim=BPD1%MatrixDim
+  CALL AllocateEIG(EIG1)
+  WRITE(6,*) "EIG1%MatrixDim = ",EIG1%MatrixDim
 
   EIG%MatrixDim=BPD%MatrixDim
   CALL AllocateEIG(EIG)
@@ -776,10 +775,10 @@ PROGRAM main
   DO iE = 1, NumE
     Energy = Egrid(iE)
     iBox = 1
-    CALL CalcGamLam(BPD0,EIG0)
-    CALL Mydggev(EIG0%MatrixDim,EIG0%Gam,EIG0%MatrixDim,EIG0%Lam,EIG0%MatrixDim,EIG0%eval,EIG0%evec)
-    CALL BoxMatch(Bnull, Boxes(iBox), BPD0, EIG0, EffDim, AlphaFactor)
-    CALL CalcK(Boxes(iBox),BPD0,SD,reducedmass,EffDim,AlphaFactor,Egrid(iE),M%Eth)
+    CALL CalcGamLam(BPD1,EIG1)
+    CALL Mydggev(EIG1%MatrixDim,EIG1%Gam,EIG1%MatrixDim,EIG1%Lam,EIG1%MatrixDim,EIG1%eval,EIG1%evec)
+    CALL BoxMatch(Bnull, Boxes(iBox), BPD1, EIG1, EffDim, AlphaFactor)
+    CALL CalcK(Boxes(iBox),BPD1,SD,reducedmass,EffDim,AlphaFactor,Egrid(iE),M%Eth)
     DO iBox = 2, NumBoxes
         BPD%xl=Boxes(iBox)%xl
         BPD%xr=Boxes(iBox)%xr
