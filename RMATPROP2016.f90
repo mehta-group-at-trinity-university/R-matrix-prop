@@ -676,7 +676,7 @@ PROGRAM main
   TYPE(ScatData) SD
   TYPE(Morse) :: M
   DOUBLE PRECISION, ALLOCATABLE :: evec(:,:), eval(:)!, temp0(:,:)
-  DOUBLE PRECISION, ALLOCATABLE :: Egrid(:)
+  DOUBLE PRECISION, ALLOCATABLE :: Egrid(:), xprim(:)
   DOUBLE PRECISION xDelt
   INTEGER NumE, iE, beta, i, iBox
 
@@ -746,7 +746,9 @@ PROGRAM main
   CALL GridMakerLinear(BPD1%xNumPoints,BPD1%xl,BPD1%xr,BPD1%xPoints)
   CALL Makebasis(BPD1)
 
-  CALL GridMakerLinear(BPD%xNumPoints,-1d0,1d0,BPD%xPoints)
+  allocate(xprim(xTotNumPoints))
+  CALL GridMakerLinear(BPD%xNumPoints,0d0,1d0,xprim)
+  BPD%xPoints=xprim
   CALL MakeBasis(BPD)
 
   CALL InitMorse(M)
@@ -785,7 +787,8 @@ PROGRAM main
     DO iBox = 2, NumBoxes
         BPD%xl=Boxes(iBox)%xl
         BPD%xr=Boxes(iBox)%xr
-        CALL GridMakerLinear(BPD%xNumPoints,BPD%xl,BPD%xr,BPD%xPoints)
+        !CALL GridMakerLinear(BPD%xNumPoints,BPD%xl,BPD%xr,BPD%xPoints)
+        BPD%xPoints = BPD%xl + (BPD%xr-BPD%xl)*xprim
         CALL Makebasis(BPD)
         CALL SetMorsePotential(BPD,M)
 
