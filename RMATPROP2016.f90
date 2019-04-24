@@ -105,7 +105,8 @@ END MODULE GlobalVars
 MODULE DataStructures
   IMPLICIT NONE
   !****************************************************************************************************
-  TYPE BPData !This data type contains the array of basis functions and potential matrix
+  TYPE BPData
+    !This data type contains the array of basis functions and potential matrix
      INTEGER xNumPoints, xDim, Left, Right, Order, NumChannels, MatrixDim
      DOUBLE PRECISION, ALLOCATABLE :: u(:,:,:),ux(:,:,:),xPoints(:),x(:,:)
      DOUBLE PRECISION, ALLOCATABLE :: Pot(:,:,:,:),lam(:)
@@ -250,7 +251,6 @@ CONTAINS
   SUBROUTINE Makebasis(BPD)
     USE Quadrature
     IMPLICIT NONE
-
     TYPE(BPData) BPD
     INTEGER ix, ixp
 
@@ -669,8 +669,8 @@ PROGRAM main
   USE scattering
 
   IMPLICIT NONE
-  TYPE(BPData) BPD,BPD0
-  TYPE(GenEigVal) EIG,EIG0
+  TYPE(BPData) BPD,BPD1,BPD0,BPDtest
+  TYPE(GenEigVal) EIG,EIG1
   TYPE(BoxData) BA, BB, Bnull
   TYPE(BoxData), ALLOCATABLE :: Boxes(:)
   TYPE(ScatData) SD
@@ -719,16 +719,24 @@ PROGRAM main
     CALL printmatrix(Boxes(i)%Zf,Boxes(i)%NumOpenR,Boxes(i)%NumOpenR,6)
   ENDDO
 
-    ! Intitializes some BPD0 variables to the input values.  This is the basis set used at the left edge (r=0)
+    ! Intitializes some BPD1 variables to the input values.  This is the basis set used at the left edge (r=0)
+  BPD1%NumChannels = NumChannels
+  BPD1%Order = Order
+  BPD1%Left = 0
+  BPD1%Right = 2
+  BPD1%xNumPoints = xTotNumPoints
+  BPD1%kl = kStart ! only relevant for Left = 3. This is the normal log-derivative at BPD%xl
+  BPD1%kr = kEnd   ! only relevant for Right = 3. This is the normal log-derivative at BPD%xr
+
+  ! Intitializes some BPD variables to the input values.
   BPD0%NumChannels = NumChannels
   BPD0%Order = Order
-  BPD0%Left = 0
+  BPD0%Left = 2
   BPD0%Right = 2
   BPD0%xNumPoints = xTotNumPoints
   BPD0%kl = kStart ! only relevant for Left = 3. This is the normal log-derivative at BPD%xl
-  BPD0%kr = kEnd   ! only relevant for Right = 3. This is the normal log-derivative at BPD%xr
+  BPD0%kr = kEnd ! only relevant for Right = 3. This is the normal log-derivative at BPD%xr
 
-    ! Intitializes some BPD variables to the input values.
   BPD%NumChannels = NumChannels
   BPD%Order = Order
   BPD%Left = 2
@@ -737,35 +745,43 @@ PROGRAM main
   BPD%kl = kStart ! only relevant for Left = 3. This is the normal log-derivative at BPD%xl
   BPD%kr = kEnd ! only relevant for Right = 3. This is the normal log-derivative at BPD%xr
 
-
+  CALL AllocateBPD(BPD1)
   CALL AllocateBPD(BPD0)
   CALL AllocateBPD(BPD)
+!  call AllocateBPD(BPDtest)
 
-  BPD0%xl=Boxes(1)%xl
-  BPD0%xr=Boxes(1)%xr
+  ! Set up the primitive basis from [-1,1]
+  ! The prmitive basis
+  BPD0%xl = -1d0
+  BPD0%xr = 1d0
   CALL GridMakerLinear(BPD0%xNumPoints,BPD0%xl,BPD0%xr,BPD0%xPoints)
-  CALL Makebasis(BPD0)
+  CALL MakeBasis(BPD0)
 
+
+  ! Setup the basis for the first box (which is special since it's closed on the LHS)
+  BPD1%xl=Boxes(1)%xl
+  BPD1%xr=Boxes(1)%xr
+  CALL GridMakerLinear(BPD1%xNumPoints,BPD1%xl,BPD1%xr,BPD1%xPoints)
+  CALL Makebasis(BPD1)
   CALL InitMorse(M)
 
-  !call checkpot(BPD0,100)
-  !call checkpot(BPD,101)
-  NumE=2000
+  BPD=BPD0
+  NumE=1000
   ALLOCATE(Egrid(NumE))
   CALL makeEgrid(Egrid,NumE,M%Eth(2)+0.01d0,M%Eth(3)-0.01d0)
 
   !----------------------------------------------------------------------------------------------------
   ! Comment/uncomment the next line if you want to print the basis to file fort.300
   !----------------------------------------------------------------------------------------------------
-  !call CheckBasisBP(BPD0%xDim,BPD0%xNumPoints,BPD0%xBounds,BPD0%Order,300,LegPoints,BPD0%u,BPD0%x)
-  !CALL CheckBasisBP(BPD%xDim,BPD%xNumPoints,BPD%xBounds,BPD%Order,301,LegPoints,BPD%u,BPD%x)
+  !call CheckBasisBP(BPD1%xDim,BPD1%xNumPoints,BPD1%xBounds,BPD1%Order,300,LegPoints,BPD1%u,BPD1%x)
+!  CALL CheckBasisBP(BPD%xDim,BPD%xNumPoints,BPD%xBounds,BPD%Order,301,LegPoints,BPD%u,BPD%x)
+!  stop "stopped after checking basis"
 
-  CALL SetMorsePotential(BPD0,M)
+  CALL SetMorsePotential(BPD1,M)
 
-
-  EIG0%MatrixDim=BPD0%MatrixDim
-  CALL AllocateEIG(EIG0)
-  WRITE(6,*) "EIG0%MatrixDim = ",EIG0%MatrixDim
+  EIG1%MatrixDim=BPD1%MatrixDim
+  CALL AllocateEIG(EIG1)
+  WRITE(6,*) "EIG1%MatrixDim = ",EIG1%MatrixDim
 
   EIG%MatrixDim=BPD%MatrixDim
   CALL AllocateEIG(EIG)
@@ -775,31 +791,49 @@ PROGRAM main
 
   DO iE = 1, NumE
     Energy = Egrid(iE)
-    DO iBox = 1, NumBoxes
+    iBox=1
+    CALL CalcGamLam(BPD1,EIG1)
+    CALL Mydggev(EIG1%MatrixDim,EIG1%Gam,EIG1%MatrixDim,EIG1%Lam,EIG1%MatrixDim,EIG1%eval,EIG1%evec)
+    CALL BoxMatch(Bnull, Boxes(iBox), BPD1, EIG1, EffDim, AlphaFactor)
+    CALL CalcK(Boxes(iBox),BPD1,SD,reducedmass,EffDim,AlphaFactor,Energy,M%Eth)
+    DO iBox = 2, NumBoxes
+      !BPD=BPD0
+      BPD%xl=Boxes(iBox)%xl
+      BPD%xr=Boxes(iBox)%xr
+      !BPD%xPoints = 0.5d0*(BPD%xl + BPD%xr) + 0.5d0*(BPD%xr - BPD%xl)*BPD0%xPoints
+      !BPDtest=BPD0
+      !BPD%x = 0.5d0*(BPD%xl + BPD%xr) + 0.5d0*(BPD%xr - BPD%xl)*BPD0%x
+      !BPD%u = BPD0%u
+      !BPD%ux = BPD0%ux
+      !BPD%xBounds = BPD0%xBounds
+      !BPD%kxMin = BPD0%kxMin
+      !BPD%kxMax = BPD0%kxMax
+      !write(6,*) "xPoints:", BPD%xPoints
+      CALL GridMakerLinear(BPD%xNumPoints,BPD%xl,BPD%xr,BPD%xPoints)
+      CALL Makebasis(BPD)
+      !CALL Makebasis(BPD)
+      !write(14,*) BPD%xBounds
+      !write(15,*) BPD%kxMin, BPD%kxMax
+      ! Determine the bounds for integration of matrix elements
+      !BPD%u = BPDtest%u
+      !BPD%ux = BPDtest%ux
 
-      IF(iBox.eq.1) THEN
+      CALL SetMorsePotential(BPD,M)
+      !CALL SetMorsePotential(BPDtest,M)
+      !CALL CheckBasisBP(BPD%xDim,BPD%xNumPoints,BPD%xBounds,BPD%Order,300,LegPoints,BPD%u,BPD%x)
+      !CALL CheckBasisBP(BPDtest%xDim,BPDtest%xNumPoints,BPDtest%xBounds,&
+      !BPDtest%Order,400,LegPoints,BPDtest%u,BPDtest%x)
+      !write(300,*) BPD%kxMin, BPD%kxMax
+      !write(400,*) BPDtest%kxMin, BPDtest%kxMax
 
-        CALL CalcGamLam(BPD0,EIG0)
-        CALL Mydggev(EIG0%MatrixDim,EIG0%Gam,EIG0%MatrixDim,EIG0%Lam,EIG0%MatrixDim,EIG0%eval,EIG0%evec)
-        CALL BoxMatch(Bnull, Boxes(iBox), BPD0, EIG0, EffDim, AlphaFactor)
-        CALL CalcK(Boxes(iBox),BPD0,SD,reducedmass,EffDim,AlphaFactor,Egrid(iE),M%Eth)
+      CALL CalcGamLam(BPD,EIG)
+      !call CalcGamLam(BPDtest,EIG)
+      !stop "check basis file fort.300, fort.400"
+      CALL Mydggev(EIG%MatrixDim,EIG%Gam,EIG%MatrixDim,EIG%Lam,EIG%MatrixDim,EIG%eval,EIG%evec)
+      CALL BoxMatch(Boxes(iBox-1), Boxes(iBox), BPD, EIG, EffDim, AlphaFactor)
+      SD%K=0d0
+      CALL CalcK(Boxes(iBox),BPD,SD,reducedmass,EffDim,AlphaFactor,Energy,M%Eth)
 
-      ELSE
-        BPD%xl=Boxes(iBox)%xl
-        BPD%xr=Boxes(iBox)%xr
-        CALL GridMakerLinear(BPD%xNumPoints,BPD%xl,BPD%xr,BPD%xPoints)
-        CALL Makebasis(BPD)
-        CALL SetMorsePotential(BPD,M)
-
-        CALL CalcGamLam(BPD,EIG)
-        CALL Mydggev(EIG%MatrixDim,EIG%Gam,EIG%MatrixDim,EIG%Lam,EIG%MatrixDim,EIG%eval,EIG%evec)
-        CALL BoxMatch(Boxes(iBox-1), Boxes(iBox), BPD, EIG, EffDim, AlphaFactor)
-        SD%K=0d0
-        CALL CalcK(Boxes(iBox),BPD,SD,reducedmass,EffDim,AlphaFactor,Egrid(iE),M%Eth)
-
-
-
-      ENDIF
     ENDDO
     write(6,*) "K-matrix:", SD%K
     WRITE(10,*) Energy, SD%K
@@ -986,6 +1020,7 @@ SUBROUTINE BoxMatch(BA, BB, BPD, EIG, dim, alphafact)
     ALLOCATE(Dvec(BB%NumOpenL+BB%betaMax,BB%NumOpenL+BB%betaMax))
     ALLOCATE(Dval(BB%NumOpenL+BB%betaMax))
 
+    Dval=0d0
     Dvec=0d0
     BigZA=0d0
     BigZB=0d0
@@ -1027,12 +1062,12 @@ SUBROUTINE BoxMatch(BA, BB, BPD, EIG, dim, alphafact)
 !!$    enddo
     j=1
     DO i = 1,BB%NumOpenL+BB%betaMax
-       IF(ABS(Dval(i)).GE.1e-12) THEN
-          Dikeep(j)=i
-          BB%bf(j)=Dval(i)
-          !write(6,*) i, j, BB%bf(j), (Dvec(k,i), k=BB%NumOpenL+1,BB%NumOpenL+BB%betaMax)
-          j=j+1
-       ENDIF
+      IF(ABS(Dval(i)).GE.1d-12) THEN
+        !write(6,*) i, j, Dval(i)!, (Dvec(k,i), k=BB%NumOpenL+1,BB%NumOpenL+BB%betaMax)
+        Dikeep(j)=i
+        BB%bf(j)=Dval(i)
+        j=j+1
+      ENDIF
     ENDDO
     !print*, 'Final Number of Channels : ',j-1, "should be ",BB%NumOpenR
     DO beta=1,BB%NumOpenR
