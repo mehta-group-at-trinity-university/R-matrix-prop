@@ -103,10 +103,10 @@ cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
      >     xLeg,MatrixDim,xBounds,xNumPoints,Deriv,u)
       implicit none
 
-      integer Left,Right,Order,LegPoints,MatrixDim,xBounds(*),
-     >     xNumPoints,Deriv
-      double precision xPoints(*),xLeg(*)
-      double precision u(LegPoints,xNumPoints,MatrixDim)
+      integer, intent(in) :: Left,Right,Order,LegPoints,MatrixDim,xNumPoints,Deriv
+      integer, intent(out) :: xBounds(*)
+      double precision, intent(in) :: xPoints(*),xLeg(*)
+      double precision, intent(out) :: u(LegPoints,xNumPoints,MatrixDim)
 
       integer i,k,l,Count
       integer, allocatable :: t(:)

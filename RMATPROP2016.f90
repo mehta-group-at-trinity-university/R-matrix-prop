@@ -248,9 +248,10 @@ CONTAINS
     DEALLOCATE(BPD%xPoints,BPD%xBounds,BPD%x,BPD%u,BPD%ux,BPD%kxMin,BPD%kxMax,BPD%Pot,BPD%lam)
   END SUBROUTINE DeAllocateBPD
   !****************************************************************************************************
-  SUBROUTINE Makebasis(BPD)
+  SUBROUTINE MakeBasis(BPD)
     USE Quadrature
     IMPLICIT NONE
+
     TYPE(BPData) BPD
     INTEGER ix, ixp
 
@@ -267,7 +268,33 @@ CONTAINS
        ENDDO
     ENDDO
 
-  END SUBROUTINE Makebasis
+  END SUBROUTINE MakeBasis
+    !****************************************************************************************************
+  SUBROUTINE MakeBasisArray(Left,Right,kl,kr,Order,xPoints,xDim,xBounds,xNumPoints,u,ux,kxMin,kxMax)
+    USE Quadrature
+    IMPLICIT NONE
+    integer Left,Right,Order,xDim,xNumPoints
+    integer kxMin(xDim,xDim),kxMax(xDim,xDim),xBounds(xNumPoints + 2*Order)
+    double precision xPoints(xNumPoints)
+    double precision u(LegPoints,xNumPoints,xDim),ux(LegPoints,xNumPoints,xDim)
+    double precision kr,kl
+    !TYPE(BPData) BPD
+    INTEGER ix, ixp
+
+    CALL CalcBasisFuncsBP(Left,Right,kl,kr,Order,xPoints,LegPoints,xLeg, &
+         xDim,xBounds,xNumPoints,0,u)
+    CALL CalcBasisFuncsBP(Left,Right,kl,kr,Order,xPoints,LegPoints,xLeg, &
+         xDim,xBounds,xNumPoints,1,ux)
+
+    ! Determine the bounds for integration of matrix elements
+    DO ix = 1,xDim
+       DO ixp = 1,xDim
+          kxMin(ixp,ix) = MAX(xBounds(ix),xBounds(ixp))
+          kxMax(ixp,ix) = MIN(xBounds(ix+Order+1),xBounds(ixp+Order+1))-1 !
+       ENDDO
+    ENDDO
+
+  END SUBROUTINE MakeBasisArray
   !****************************************************************************************************
   SUBROUTINE checkpot(BPD,file)
     USE Quadrature
@@ -669,16 +696,16 @@ PROGRAM main
   USE scattering
 
   IMPLICIT NONE
-  TYPE(BPData) BPD,BPD1,BPD0,BPDtest
+  TYPE(BPData) BPD,BPD1,BPD0
   TYPE(GenEigVal) EIG,EIG1
   TYPE(BoxData) BA, BB, Bnull
   TYPE(BoxData), ALLOCATABLE :: Boxes(:)
   TYPE(ScatData) SD
   TYPE(Morse) :: M
   DOUBLE PRECISION, ALLOCATABLE :: evec(:,:), eval(:)!, temp0(:,:)
-  DOUBLE PRECISION, ALLOCATABLE :: Egrid(:)
+  DOUBLE PRECISION, ALLOCATABLE :: Egrid(:), xprim(:)
   DOUBLE PRECISION xDelt
-  INTEGER NumE, iE, beta, i, iBox
+  INTEGER NumE, iE, beta, i, iBox,lx,kx
 
   !----------------------------------------------------------------------
   ! Read information from the input file
@@ -728,15 +755,7 @@ PROGRAM main
   BPD1%kl = kStart ! only relevant for Left = 3. This is the normal log-derivative at BPD%xl
   BPD1%kr = kEnd   ! only relevant for Right = 3. This is the normal log-derivative at BPD%xr
 
-  ! Intitializes some BPD variables to the input values.
-  BPD0%NumChannels = NumChannels
-  BPD0%Order = Order
-  BPD0%Left = 2
-  BPD0%Right = 2
-  BPD0%xNumPoints = xTotNumPoints
-  BPD0%kl = kStart ! only relevant for Left = 3. This is the normal log-derivative at BPD%xl
-  BPD0%kr = kEnd ! only relevant for Right = 3. This is the normal log-derivative at BPD%xr
-
+    ! Intitializes some BPD variables to the input values.
   BPD%NumChannels = NumChannels
   BPD%Order = Order
   BPD%Left = 2
@@ -745,39 +764,42 @@ PROGRAM main
   BPD%kl = kStart ! only relevant for Left = 3. This is the normal log-derivative at BPD%xl
   BPD%kr = kEnd ! only relevant for Right = 3. This is the normal log-derivative at BPD%xr
 
+  BPD0=BPD
+
   CALL AllocateBPD(BPD1)
-  CALL AllocateBPD(BPD0)
   CALL AllocateBPD(BPD)
-!  call AllocateBPD(BPDtest)
+  CALL AllocateBPD(BPD0)
 
-  ! Set up the primitive basis from [-1,1]
-  ! The prmitive basis
-  BPD0%xl = -1d0
-  BPD0%xr = 1d0
-  CALL GridMakerLinear(BPD0%xNumPoints,BPD0%xl,BPD0%xr,BPD0%xPoints)
-  CALL MakeBasis(BPD0)
-
-
-  ! Setup the basis for the first box (which is special since it's closed on the LHS)
   BPD1%xl=Boxes(1)%xl
   BPD1%xr=Boxes(1)%xr
   CALL GridMakerLinear(BPD1%xNumPoints,BPD1%xl,BPD1%xr,BPD1%xPoints)
   CALL Makebasis(BPD1)
+
+  allocate(xprim(xTotNumPoints))
+  CALL GridMakerLinear(BPD%xNumPoints,0d0,1d0,xprim)
+  BPD%xPoints=xprim
+  CALL MakeBasis(BPD)
+  !initialize BPD0 to the current BPD for storage.
+  BPD0=BPD
+
   CALL InitMorse(M)
 
-  BPD=BPD0
-  NumE=1000
+
+  NumE=2000
   ALLOCATE(Egrid(NumE))
   CALL makeEgrid(Egrid,NumE,M%Eth(2)+0.01d0,M%Eth(3)-0.01d0)
 
+
+  CALL SetMorsePotential(BPD1,M)
+  CALL SetMorsePotential(BPD,M)
   !----------------------------------------------------------------------------------------------------
   ! Comment/uncomment the next line if you want to print the basis to file fort.300
   !----------------------------------------------------------------------------------------------------
   !call CheckBasisBP(BPD1%xDim,BPD1%xNumPoints,BPD1%xBounds,BPD1%Order,300,LegPoints,BPD1%u,BPD1%x)
-!  CALL CheckBasisBP(BPD%xDim,BPD%xNumPoints,BPD%xBounds,BPD%Order,301,LegPoints,BPD%u,BPD%x)
-!  stop "stopped after checking basis"
+  CALL CheckBasisBP(BPD%xDim,BPD%xNumPoints,BPD%xBounds,BPD%Order,301,LegPoints,BPD%u,BPD%x)
 
-  CALL SetMorsePotential(BPD1,M)
+  !call checkpot(BPD1,100)
+  call checkpot(BPD,101)
 
   EIG1%MatrixDim=BPD1%MatrixDim
   CALL AllocateEIG(EIG1)
@@ -788,54 +810,49 @@ PROGRAM main
   WRITE(6,*) "EIG%MatrixDim = ",EIG%MatrixDim
 
   CALL AllocateScat(SD,Boxes(NumBoxes)%NumOpenR)
+  !CALL MakeBasisArray(BPD%Left,BPD%Right,BPD%kl,BPD%kr,BPD%Order,xprim,&
+  !BPD%xDim,BPD%xBounds,BPD%xNumPoints,BPD%u,BPD%ux,BPD%kxMin,BPD%kxMax)
+  !write(30,*) "u:"
+  !write(30,*) BPD%u(:,:,1)
 
   DO iE = 1, NumE
     Energy = Egrid(iE)
-    iBox=1
+    iBox = 1
     CALL CalcGamLam(BPD1,EIG1)
     CALL Mydggev(EIG1%MatrixDim,EIG1%Gam,EIG1%MatrixDim,EIG1%Lam,EIG1%MatrixDim,EIG1%eval,EIG1%evec)
     CALL BoxMatch(Bnull, Boxes(iBox), BPD1, EIG1, EffDim, AlphaFactor)
-    CALL CalcK(Boxes(iBox),BPD1,SD,reducedmass,EffDim,AlphaFactor,Energy,M%Eth)
+    CALL CalcK(Boxes(iBox),BPD1,SD,reducedmass,EffDim,AlphaFactor,Egrid(iE),M%Eth)
     DO iBox = 2, NumBoxes
-      !BPD=BPD0
+      BPD=BPD0  ! recall the stored BPD0 into BPD in case some things are being rewritten
       BPD%xl=Boxes(iBox)%xl
       BPD%xr=Boxes(iBox)%xr
-      !BPD%xPoints = 0.5d0*(BPD%xl + BPD%xr) + 0.5d0*(BPD%xr - BPD%xl)*BPD0%xPoints
-      !BPDtest=BPD0
-      !BPD%x = 0.5d0*(BPD%xl + BPD%xr) + 0.5d0*(BPD%xr - BPD%xl)*BPD0%x
-      !BPD%u = BPD0%u
-      !BPD%ux = BPD0%ux
-      !BPD%xBounds = BPD0%xBounds
-      !BPD%kxMin = BPD0%kxMin
-      !BPD%kxMax = BPD0%kxMax
-      !write(6,*) "xPoints:", BPD%xPoints
-      CALL GridMakerLinear(BPD%xNumPoints,BPD%xl,BPD%xr,BPD%xPoints)
-      CALL Makebasis(BPD)
-      !CALL Makebasis(BPD)
-      !write(14,*) BPD%xBounds
-      !write(15,*) BPD%kxMin, BPD%kxMax
-      ! Determine the bounds for integration of matrix elements
-      !BPD%u = BPDtest%u
-      !BPD%ux = BPDtest%ux
+      !BPD%u(:,:,1:BPD%xDim)=BPD1%u(:,:,2:BPD1%xDim)
+      !BPD%ux(:,:,1:BPD%xDim)=BPD1%ux(:,:,2:BPD1%xDim)
+      !CALL GridMakerLinear(BPD%xNumPoints,BPD%xl,BPD%xr,BPD%xPoints)
+      BPD%xPoints = BPD%xl + (BPD%xr-BPD%xl)*xprim
+      !CALL MakeBasis(BPD)
+      !CALL MakeBasisArray(BPD%Left,BPD%Right,BPD%kl,BPD%kr,BPD%Order,BPD%xPoints,&
+      !BPD%xDim,BPD%xBounds,BPD%xNumPoints,BPD%u,BPD%ux,BPD%kxMin,BPD%kxMax)
+      do kx = 1,BPD%xNumPoints
+        do lx = 1,LegPoints
+          BPD%ux(lx,kx,1:BPD%xDim) = BPD0%ux(lx,kx,1:BPD%xDim)/(BPD%xr-BPD%xl)
+        enddo
+      enddo
 
+      !write(31,*) "u:"
+      !write(31,*) BPD%u(:,:,1)
+      !stop "message"
       CALL SetMorsePotential(BPD,M)
-      !CALL SetMorsePotential(BPDtest,M)
-      !CALL CheckBasisBP(BPD%xDim,BPD%xNumPoints,BPD%xBounds,BPD%Order,300,LegPoints,BPD%u,BPD%x)
-      !CALL CheckBasisBP(BPDtest%xDim,BPDtest%xNumPoints,BPDtest%xBounds,&
-      !BPDtest%Order,400,LegPoints,BPDtest%u,BPDtest%x)
-      !write(300,*) BPD%kxMin, BPD%kxMax
-      !write(400,*) BPDtest%kxMin, BPDtest%kxMax
-
+      !CALL CheckBasisBP(BPD%xDim,BPD%xNumPoints,BPD%xBounds,BPD%Order,302,LegPoints,BPD%u,BPD%x)
+      !call checkpot(BPD,102)
+      !stop "message"
       CALL CalcGamLam(BPD,EIG)
-      !call CalcGamLam(BPDtest,EIG)
-      !stop "check basis file fort.300, fort.400"
       CALL Mydggev(EIG%MatrixDim,EIG%Gam,EIG%MatrixDim,EIG%Lam,EIG%MatrixDim,EIG%eval,EIG%evec)
       CALL BoxMatch(Boxes(iBox-1), Boxes(iBox), BPD, EIG, EffDim, AlphaFactor)
       SD%K=0d0
-      CALL CalcK(Boxes(iBox),BPD,SD,reducedmass,EffDim,AlphaFactor,Energy,M%Eth)
-
+      CALL CalcK(Boxes(iBox),BPD,SD,reducedmass,EffDim,AlphaFactor,Egrid(iE),M%Eth)
     ENDDO
-    write(6,*) "K-matrix:", SD%K
+    write(6,*) Energy, SD%K
     WRITE(10,*) Energy, SD%K
   ENDDO
 
@@ -1020,7 +1037,6 @@ SUBROUTINE BoxMatch(BA, BB, BPD, EIG, dim, alphafact)
     ALLOCATE(Dvec(BB%NumOpenL+BB%betaMax,BB%NumOpenL+BB%betaMax))
     ALLOCATE(Dval(BB%NumOpenL+BB%betaMax))
 
-    Dval=0d0
     Dvec=0d0
     BigZA=0d0
     BigZB=0d0
@@ -1062,13 +1078,14 @@ SUBROUTINE BoxMatch(BA, BB, BPD, EIG, dim, alphafact)
 !!$    enddo
     j=1
     DO i = 1,BB%NumOpenL+BB%betaMax
-      IF(ABS(Dval(i)).GE.1d-12) THEN
-        !write(6,*) i, j, Dval(i)!, (Dvec(k,i), k=BB%NumOpenL+1,BB%NumOpenL+BB%betaMax)
-        Dikeep(j)=i
-        BB%bf(j)=Dval(i)
-        j=j+1
-      ENDIF
+       IF((ABS(Dval(i)).GE.1e-12).and.(ABS(Dval(i)).lt.1e12)) THEN
+         !write(6,*) i, Dval(i)!, (Dvec(k,i), k=BB%NumOpenL+1,BB%NumOpenL+BB%betaMax)
+          Dikeep(j)=i
+          BB%bf(j)=Dval(i)
+          j=j+1
+       ENDIF
     ENDDO
+    !write(6,*)
     !print*, 'Final Number of Channels : ',j-1, "should be ",BB%NumOpenR
     DO beta=1,BB%NumOpenR
        !for each beta, construct the final state with constant log-derivative at the right boundary
