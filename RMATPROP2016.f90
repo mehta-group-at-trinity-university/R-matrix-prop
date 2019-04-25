@@ -269,32 +269,6 @@ CONTAINS
     ENDDO
 
   END SUBROUTINE MakeBasis
-    !****************************************************************************************************
-  SUBROUTINE MakeBasisArray(Left,Right,kl,kr,Order,xPoints,xDim,xBounds,xNumPoints,u,ux,kxMin,kxMax)
-    USE Quadrature
-    IMPLICIT NONE
-    integer Left,Right,Order,xDim,xNumPoints
-    integer kxMin(xDim,xDim),kxMax(xDim,xDim),xBounds(xNumPoints + 2*Order)
-    double precision xPoints(xNumPoints)
-    double precision u(LegPoints,xNumPoints,xDim),ux(LegPoints,xNumPoints,xDim)
-    double precision kr,kl
-    !TYPE(BPData) BPD
-    INTEGER ix, ixp
-
-    CALL CalcBasisFuncsBP(Left,Right,kl,kr,Order,xPoints,LegPoints,xLeg, &
-         xDim,xBounds,xNumPoints,0,u)
-    CALL CalcBasisFuncsBP(Left,Right,kl,kr,Order,xPoints,LegPoints,xLeg, &
-         xDim,xBounds,xNumPoints,1,ux)
-
-    ! Determine the bounds for integration of matrix elements
-    DO ix = 1,xDim
-       DO ixp = 1,xDim
-          kxMin(ixp,ix) = MAX(xBounds(ix),xBounds(ixp))
-          kxMax(ixp,ix) = MIN(xBounds(ix+Order+1),xBounds(ixp+Order+1))-1 !
-       ENDDO
-    ENDDO
-
-  END SUBROUTINE MakeBasisArray
   !****************************************************************************************************
   SUBROUTINE checkpot(BPD,file)
     USE Quadrature
@@ -429,7 +403,6 @@ END MODULE DataStructures
       ALLOCATE(s(no),c(no),Imat(no,no),Jmat(no,no))
       ALLOCATE(sp(no),cp(no))
       DO i = 1,no
-         !        write(6,*) d, k(i), rm, k(i)*rm,BPD%lam(i)
          CALL hyperrjry(INT(d),alpha,BPD%lam(i),k(i)*rm,rhypj,rhypy,rhypjp,rhypyp)
          s(i) = dsqrt(mu)*rhypj  ! the factor of sqrt(mu) is for energy normalization
          c(i) = -dsqrt(mu)*rhypy ! the factor of sqrt(mu) is for energy normalization
@@ -444,13 +417,10 @@ END MODULE DataStructures
             Jmat(i,beta) = (B%Zf(i,beta)*sp(i) - B%Zfp(i,beta)*s(i))/(c(i)*sp(i)-s(i)*cp(i))
          ENDDO
       ENDDO
-!!$      write(6,*) "Imat:"
-!!$      call printmatrix(Imat,no,no,6)
-!!$      write(6,*) "Jmat:"
-!!$      call printmatrix(Jmat,no,no,6)
+
       CALL SqrMatInv(Imat, no)
       SD%K = MATMUL(Jmat,Imat)
-      !WRITE(6,*) "B%NumOpenR = ", B%NumOpenR
+
       DO i=1,B%NumOpenR
          DO j=1,B%NumOpenR
             SD%R(i,j)=0.0d0
@@ -459,6 +429,7 @@ END MODULE DataStructures
             ENDDO
          ENDDO
       ENDDO
+
       !call sqrmatinv(BB%Zfp,BB%NumOpenR)  This gives the same result as the code segment  executed above
       !SD%R = matmul(BB%Zf,BB%Zfp)
 
@@ -652,11 +623,6 @@ END MODULE DataStructures
         Nchan=3
         BPD%Pot(:,:,:,:) = 0d0
 
-!        write(6,*) "V:"
-!        call printmatrix(M%V,3,3,6)
-!        write(6,*) "D:"
-!        call printmatrix(M%D,3,1,6)
-
         DO kx = 1,BPD%xNumPoints-1
            ax = BPD%xPoints(kx)
            bx = BPD%xPoints(kx+1)
@@ -706,7 +672,6 @@ PROGRAM main
   DOUBLE PRECISION, ALLOCATABLE :: Egrid(:), xprim(:)
   DOUBLE PRECISION xDelt
   INTEGER NumE, iE, beta, i, iBox,lx,kx
-
   !----------------------------------------------------------------------
   ! Read information from the input file
   !----------------------------------------------------------------------
@@ -718,8 +683,6 @@ PROGRAM main
   LegendreFile = 'Legendre.dat'
   ALLOCATE(xLeg(LegPoints),wLeg(LegPoints))
   CALL GetGaussFactors(LegendreFile,LegPoints,xLeg,wLeg)
-
-
   !---------------------------------------------------------------------
   ! allocate the data for the Boxes
   !---------------------------------------------------------------------
@@ -746,7 +709,10 @@ PROGRAM main
     CALL printmatrix(Boxes(i)%Zf,Boxes(i)%NumOpenR,Boxes(i)%NumOpenR,6)
   ENDDO
 
-    ! Intitializes some BPD1 variables to the input values.  This is the basis set used at the left edge (r=0)
+  !-------------------------------------------------------------------
+  ! Intitializes some BPD1 variables to the input values.
+  ! This is the basis set used at the left edge (r=0) in Boxes(1)
+  !-------------------------------------------------------------------
   BPD1%NumChannels = NumChannels
   BPD1%Order = Order
   BPD1%Left = 0
@@ -755,52 +721,66 @@ PROGRAM main
   BPD1%kl = kStart ! only relevant for Left = 3. This is the normal log-derivative at BPD%xl
   BPD1%kr = kEnd   ! only relevant for Right = 3. This is the normal log-derivative at BPD%xr
 
-    ! Intitializes some BPD variables to the input values.
-  BPD%NumChannels = NumChannels
-  BPD%Order = Order
-  BPD%Left = 2
-  BPD%Right = 2
-  BPD%xNumPoints = xTotNumPoints
-  BPD%kl = kStart ! only relevant for Left = 3. This is the normal log-derivative at BPD%xl
-  BPD%kr = kEnd ! only relevant for Right = 3. This is the normal log-derivative at BPD%xr
+  !---------------------------------------------------------------------
+  ! Intitializes some BPD0 variables to the input values.
+  ! This is the "primitive" basis set defined over range [0,1] (see below.)
+  !---------------------------------------------------------------------
+  BPD0%NumChannels = NumChannels
+  BPD0%Order = Order
+  BPD0%Left = 2
+  BPD0%Right = 2
+  BPD0%xNumPoints = xTotNumPoints
+  BPD0%kl = kStart ! only relevant for Left = 3. This is the normal log-derivative at BPD%xl
+  BPD0%kr = kEnd ! only relevant for Right = 3. This is the normal log-derivative at BPD%xr
 
-  BPD0=BPD
-
+  !---------------------------------------------------------------------
+  ! Copy over the properties of the primitive set to the workhorse set BPD that will
+  ! actually be used for propagation.
+  !---------------------------------------------------------------------
+  BPD=BPD0
+  ! Allocate memory for the basis sets and potential arrays
   CALL AllocateBPD(BPD1)
   CALL AllocateBPD(BPD)
   CALL AllocateBPD(BPD0)
 
+  !---------------------------------------------------------------------
+  ! Make and fill the arrays for the basis used in Boxes(1)
+  !---------------------------------------------------------------------
   BPD1%xl=Boxes(1)%xl
   BPD1%xr=Boxes(1)%xr
   CALL GridMakerLinear(BPD1%xNumPoints,BPD1%xl,BPD1%xr,BPD1%xPoints)
   CALL Makebasis(BPD1)
 
+  !---------------------------------------------------------------------
+  ! Make and fill the arrays for the primitive set
+  !---------------------------------------------------------------------
   allocate(xprim(xTotNumPoints))
-  CALL GridMakerLinear(BPD%xNumPoints,0d0,1d0,xprim)
-  BPD%xPoints=xprim
-  CALL MakeBasis(BPD)
-  !initialize BPD0 to the current BPD for storage.
-  BPD0=BPD
-
+  CALL GridMakerLinear(BPD0%xNumPoints,0d0,1d0,xprim)
+  BPD0%xPoints=xprim
+  CALL MakeBasis(BPD0)
+  !Copy over the primitive set to the workhose set
+  BPD=BPD0
+  ! Initialize the potential data
   CALL InitMorse(M)
 
-
+  ! make the energy grid
   NumE=2000
   ALLOCATE(Egrid(NumE))
   CALL makeEgrid(Egrid,NumE,M%Eth(2)+0.01d0,M%Eth(3)-0.01d0)
 
-
+  ! Fill the arrays for the potential matrix for the first box
   CALL SetMorsePotential(BPD1,M)
-  CALL SetMorsePotential(BPD,M)
+
   !----------------------------------------------------------------------------------------------------
   ! Comment/uncomment the next line if you want to print the basis to file fort.300
   !----------------------------------------------------------------------------------------------------
   !call CheckBasisBP(BPD1%xDim,BPD1%xNumPoints,BPD1%xBounds,BPD1%Order,300,LegPoints,BPD1%u,BPD1%x)
-  CALL CheckBasisBP(BPD%xDim,BPD%xNumPoints,BPD%xBounds,BPD%Order,301,LegPoints,BPD%u,BPD%x)
+  !CALL CheckBasisBP(BPD%xDim,BPD%xNumPoints,BPD%xBounds,BPD%Order,301,LegPoints,BPD%u,BPD%x)
 
   !call checkpot(BPD1,100)
-  call checkpot(BPD,101)
+  !call checkpot(BPD,101)
 
+  ! Allocate memory for the eigenvalue problem
   EIG1%MatrixDim=BPD1%MatrixDim
   CALL AllocateEIG(EIG1)
   WRITE(6,*) "EIG1%MatrixDim = ",EIG1%MatrixDim
@@ -809,11 +789,8 @@ PROGRAM main
   CALL AllocateEIG(EIG)
   WRITE(6,*) "EIG%MatrixDim = ",EIG%MatrixDim
 
+  ! Allocate memory for the scattering data
   CALL AllocateScat(SD,Boxes(NumBoxes)%NumOpenR)
-  !CALL MakeBasisArray(BPD%Left,BPD%Right,BPD%kl,BPD%kr,BPD%Order,xprim,&
-  !BPD%xDim,BPD%xBounds,BPD%xNumPoints,BPD%u,BPD%ux,BPD%kxMin,BPD%kxMax)
-  !write(30,*) "u:"
-  !write(30,*) BPD%u(:,:,1)
 
   DO iE = 1, NumE
     Energy = Egrid(iE)
@@ -826,26 +803,13 @@ PROGRAM main
       BPD=BPD0  ! recall the stored BPD0 into BPD in case some things are being rewritten
       BPD%xl=Boxes(iBox)%xl
       BPD%xr=Boxes(iBox)%xr
-      !BPD%u(:,:,1:BPD%xDim)=BPD1%u(:,:,2:BPD1%xDim)
-      !BPD%ux(:,:,1:BPD%xDim)=BPD1%ux(:,:,2:BPD1%xDim)
-      !CALL GridMakerLinear(BPD%xNumPoints,BPD%xl,BPD%xr,BPD%xPoints)
       BPD%xPoints = BPD%xl + (BPD%xr-BPD%xl)*xprim
-      !CALL MakeBasis(BPD)
-      !CALL MakeBasisArray(BPD%Left,BPD%Right,BPD%kl,BPD%kr,BPD%Order,BPD%xPoints,&
-      !BPD%xDim,BPD%xBounds,BPD%xNumPoints,BPD%u,BPD%ux,BPD%kxMin,BPD%kxMax)
       do kx = 1,BPD%xNumPoints
         do lx = 1,LegPoints
           BPD%ux(lx,kx,1:BPD%xDim) = BPD0%ux(lx,kx,1:BPD%xDim)/(BPD%xr-BPD%xl)
         enddo
       enddo
-
-      !write(31,*) "u:"
-      !write(31,*) BPD%u(:,:,1)
-      !stop "message"
-      CALL SetMorsePotential(BPD,M)
-      !CALL CheckBasisBP(BPD%xDim,BPD%xNumPoints,BPD%xBounds,BPD%Order,302,LegPoints,BPD%u,BPD%x)
-      !call checkpot(BPD,102)
-      !stop "message"
+      CALL SetMorsePotential(BPD,M)  ! would like to change this so we don't have to do it for each energy.
       CALL CalcGamLam(BPD,EIG)
       CALL Mydggev(EIG%MatrixDim,EIG%Gam,EIG%MatrixDim,EIG%Lam,EIG%MatrixDim,EIG%eval,EIG%evec)
       CALL BoxMatch(Boxes(iBox-1), Boxes(iBox), BPD, EIG, EffDim, AlphaFactor)
@@ -855,73 +819,6 @@ PROGRAM main
     write(6,*) Energy, SD%K
     WRITE(10,*) Energy, SD%K
   ENDDO
-
-  CALL DeAllocateBPD(BPD)
-
-  !----------------------------------------------------------------------------------------------------
-  ! be sure to change the values of NumOpenL and NumOpenR above
-  ! use this part for the box-matching algorithm
-!   BPD%Left = 2
-!   BPD%Right = 2
-! !!$
-!
-!   BA%NumOpenL = 0
-!   BA%NumOpenR = 3
-!   BA%betaMax = BA%NumOpenL+BA%NumOpenR
-!
-!   BB%NumOpenL = 3
-!   BB%NumOpenR = 3
-!   energy = 2.5d0
-!   BB%betaMax = 6
-!   xstart = 5d0
-!   xend = 5d0+10d0
-!
-!   reducedmass = 1d0
-!
-!   EIG%MatrixDim=BPD%MatrixDim
-!   CALL Boxes(ieroBox(BA)
-!   CALL InitZeroBox(BB)
-!   CALL AllocateScat(SD,BA%NumOpenR)
-!   CALL AllocateBPD(BPD)
-!   BPD%xl=xStart
-!   BPD%xr=xEnd
-!   CALL GridMakerLinear(BPD%xNumPoints,BPD%xl,BPD%xr,BPD%xPoints)
-!   CALL Makebasis(BPD)
-!   CALL SetBalujaPotential(BPD)
-!   CALL checkpot(BPD,101)
-!   CALL AllocateEIG(EIG)
-!
-!   WRITE(6,*) "EIG%MatrixDim = ",EIG%MatrixDim
-!
-!   CALL MYDSYEV(xStart*RMatBaluja1,BA%betaMax,BA%b,BA%Z)
-!   BA%Zf=BA%Z
-!   BA%b = -1.d0/BA%b
-!   BA%bf = BA%b
-!   DO beta = 1,BA%betaMax
-!      DO i = 1,BA%NumOpenR
-!         BA%ZfP(i,beta) = -BA%bf(beta)*BA%Zf(i,beta)
-!      ENDDO
-!   ENDDO
-!
-!   WRITE(6,*) "calculating gamma for baluja problem"
-!   CALL CalcGamLam(BPD,EIG)
-!   CALL Mydggev(EIG%MatrixDim,EIG%Gam,EIG%MatrixDim,EIG%Lam,EIG%MatrixDim,EIG%eval,EIG%evec)
-!   CALL BoxMatch(BA, BB, BPD, EIG, EffDim,AlphaFactor)
-!   CALL CalcK(BB,BPD,SD,reducedmass,EffDim,AlphaFactor,Energy,BalujaEth)
-!
-!   WRITE(6,*) "The initial R-Matrix is:"
-!   CALL printmatrix(RMatBaluja1,3,3,6)
-!   WRITE(6,*) "Final R-matrix:"
-!
-!   CALL printmatrix(SD%R/xEnd,BB%NumOpenR,BB%NumOpenR,6)
-! !!$  !call printmatrix(BB%RF,BB%NumOpenR,BB%NumOpenR,6)
-!
-!   WRITE(6,*) "The Exact R-Matrix From Baluja et al at R=15.0 is:"
-!   CALL printmatrix(RMatBaluja2,3,3,6)
-!
-
-!  call checkbessel(0.0001d0,10d0,100,1d0,3,100)
-
 
 20 FORMAT(1P,100e14.8)
 END PROGRAM main
