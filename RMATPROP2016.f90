@@ -567,7 +567,6 @@ END MODULE DataStructures
       RETURN
 
     END FUNCTION BalujaPotential
-    !****************************************************************************************************
   END MODULE BalujaParameters
   !****************************************************************************************************
       MODULE MorsePotential
@@ -771,15 +770,6 @@ PROGRAM main
   ! Fill the arrays for the potential matrix for the first box
   CALL SetMorsePotential(BPD1,M)
 
-  !----------------------------------------------------------------------------------------------------
-  ! Comment/uncomment the next line if you want to print the basis to file fort.300
-  !----------------------------------------------------------------------------------------------------
-  !call CheckBasisBP(BPD1%xDim,BPD1%xNumPoints,BPD1%xBounds,BPD1%Order,300,LegPoints,BPD1%u,BPD1%x)
-  !CALL CheckBasisBP(BPD%xDim,BPD%xNumPoints,BPD%xBounds,BPD%Order,301,LegPoints,BPD%u,BPD%x)
-
-  !call checkpot(BPD1,100)
-  !call checkpot(BPD,101)
-
   ! Allocate memory for the eigenvalue problem
   EIG1%MatrixDim=BPD1%MatrixDim
   CALL AllocateEIG(EIG1)
@@ -800,7 +790,7 @@ PROGRAM main
     CALL BoxMatch(Bnull, Boxes(iBox), BPD1, EIG1, EffDim, AlphaFactor)
     CALL CalcK(Boxes(iBox),BPD1,SD,reducedmass,EffDim,AlphaFactor,Egrid(iE),M%Eth)
     DO iBox = 2, NumBoxes
-      BPD=BPD0  ! recall the stored BPD0 into BPD in case some things are being rewritten
+      !BPD=BPD0  ! recall the stored BPD0 into BPD in case some things are being rewritten
       BPD%xl=Boxes(iBox)%xl
       BPD%xr=Boxes(iBox)%xr
       BPD%xPoints = BPD%xl + (BPD%xr-BPD%xl)*xprim
@@ -862,162 +852,124 @@ SUBROUTINE BoxMatch(BA, BB, BPD, EIG, dim, alphafact)
   DOUBLE PRECISION, ALLOCATABLE :: BigZA(:,:), BigZB(:,:),Dvec(:,:)
   DOUBLE PRECISION, ALLOCATABLE :: Dval(:)
   INTEGER, ALLOCATABLE :: Dikeep(:)
-  DOUBLE PRECISION NewNorm, dim, alphafact
+  DOUBLE PRECISION NewNorm, dim, alphafact, absd
   INTEGER i,j,k,beta,betaprime,nch,mch!,betamax
   INTEGER ikeep(BB%betaMax)
 
+  j=1
+  ikeep = 0
+  DO i = 1, BPD%MatrixDim
+    IF(ABS(EIG%eval(i)).GE.1e-12) THEN
+      BB%b(j) = EIG%eval(i)
+      ikeep(j)=i
+      j = j+1
+    ENDIF
+  ENDDO
 
-!    call printmatrix(EIG%eval,BPD%MatrixDim,1,6)
-    j=1
-    ikeep = 0
-    DO i = 1, BPD%MatrixDim
-       IF(ABS(EIG%eval(i)).GE.1e-12) THEN
-          !write(6,"(A,T20,I5,T30,E12.6)") 'eval',i, EIG%eval(i)
-          BB%b(j) = EIG%eval(i)
-          ikeep(j)=i
-          j = j+1
-       ENDIF
+  ALLOCATE(tempnorm(BPD%MatrixDim,BB%betaMax))
+  BB%Norm=0d0
+  tempnorm=0d0
+  BB%Nbeta=0d0
+  DO beta=1,BB%betaMax
+    DO betaprime=1,BB%betaMax
+      BB%Norm(beta,betaprime)=0d0
+      DO i=1,BPD%MatrixDim
+        tempnorm(i,betaprime)=0.0d0
+        DO j=1,BPD%MatrixDim
+          tempnorm(i,betaprime) = tempnorm(i,betaprime) + EIG%Lam(i,j)*EIG%evec(j,ikeep(betaprime)) !
+        ENDDO
+        BB%Norm(beta,betaprime) = BB%Norm(beta,betaprime) + EIG%evec(i,ikeep(beta))*tempnorm(i,betaprime) !
+      ENDDO
     ENDDO
-    !BB%betaMax=j-1
+    BB%Nbeta(beta) = dsqrt(BB%Norm(beta,beta))
+  ENDDO
 
-    ALLOCATE(tempnorm(BPD%MatrixDim,BB%betaMax))
-    BB%Norm=0d0
-    tempnorm=0d0
-    BB%Nbeta=0d0
+  DO beta = 1,BB%betaMax
+    DO i = 1,BB%NumOpenL
+      BB%Z(i,beta) = BPD%xl**(0.5d0*(dim-1d0-2d0*alphafact))*&
+      EIG%evec((i-1)*BPD%xDim + 1, ikeep(beta))/BB%Nbeta(beta)!
+      BB%ZP(i,beta) = -BB%b(beta)*BB%Z(i,beta)
+    ENDDO
+    DO i = 1, BB%NumOpenR
+      BB%Z(i+BB%NumOpenL,beta) = BPD%xr**(0.5d0*(dim-1d0-2d0*alphafact))*&
+      EIG%evec((i-1)*BPD%xDim + BPD%xDim,ikeep(beta))/BB%Nbeta(beta) !
+      BB%ZP(i+BB%NumOpenL,beta) = -BB%b(beta)*BB%Z(i+BB%NumOpenL,beta)
+    ENDDO
+  ENDDO
+
+  ALLOCATE(ZT(BB%betaMax,BB%betaMax))
+  ALLOCATE(temp0(BB%betaMax,BB%betaMax))
+  ZT = BB%Z
+  temp0 = 0d0
+  temp0 = MATMUL(TRANSPOSE(ZT),BB%Z)
+
+  ALLOCATE(Dikeep(BB%betaMax + BB%NumOpenL))
+  ALLOCATE(BigZA(BB%NumOpenL + BB%betaMax,BB%NumOpenL+BB%betaMax),BigZB(BB%NumOpenL+BB%betaMax,BB%NumOpenL+BB%betaMax)) !
+  ALLOCATE(Dvec(BB%NumOpenL+BB%betaMax,BB%NumOpenL+BB%betaMax))
+  ALLOCATE(Dval(BB%NumOpenL+BB%betaMax))
+
+  Dvec=0d0
+  BigZA=0d0
+  BigZB=0d0
+
+  DO i=1,BB%NumOpenL
+    DO beta=1,BB%NumOpenL
+      BigZA(i,beta)=BA%Zf(i,beta)
+      BigZA(i+BB%NumOpenL,beta)=BA%Zfp(i,beta)
+    ENDDO
+  ENDDO
+
+  DO i=1,BB%NumOpenL
     DO beta=1,BB%betaMax
-       DO betaprime=1,BB%betaMax
-          BB%Norm(beta,betaprime)=0d0
-          DO i=1,BPD%MatrixDim
-             tempnorm(i,betaprime)=0.0d0
-             DO j=1,BPD%MatrixDim
-                tempnorm(i,betaprime) = tempnorm(i,betaprime) + EIG%Lam(i,j)*EIG%evec(j,ikeep(betaprime)) !
-             ENDDO
-             BB%Norm(beta,betaprime) = BB%Norm(beta,betaprime) + EIG%evec(i,ikeep(beta))*tempnorm(i,betaprime) !
-          ENDDO
-       ENDDO
-       BB%Nbeta(beta) = dsqrt(BB%Norm(beta,beta))
-       !write(6,*) 'norm(beta,beta)=',BB%Norm(beta,beta),'Nbeta(',beta,') = ',BB%Nbeta(beta) !
+      BigZA(i, BB%NumOpenL+beta) = -BB%Z(i,beta)
+      BigZA(i+BB%NumOpenL,beta+BB%NumOpenL) = BB%ZP(i,beta)
     ENDDO
+  ENDDO
 
-    !write(6,*) "Norm matrix:"
-    !call printmatrix(BB%Norm,BB%betaMax,BB%betaMax,6)
-
-    DO beta = 1,BB%betaMax
-       DO i = 1,BB%NumOpenL
-          BB%Z(i,beta) = BPD%xl**(0.5d0*(dim-1d0-2d0*alphafact))*&
-               EIG%evec((i-1)*BPD%xDim + 1, ikeep(beta))/BB%Nbeta(beta)!
-          BB%ZP(i,beta) = -BB%b(beta)*BB%Z(i,beta)
-       ENDDO
-       DO i = 1, BB%NumOpenR
-          BB%Z(i+BB%NumOpenL,beta) = BPD%xr**(0.5d0*(dim-1d0-2d0*alphafact))*&
-               EIG%evec((i-1)*BPD%xDim + BPD%xDim,ikeep(beta))/BB%Nbeta(beta) !
-          BB%ZP(i+BB%NumOpenL,beta) = -BB%b(beta)*BB%Z(i+BB%NumOpenL,beta)
-       ENDDO
+  DO i=1,BB%NumOpenR
+    DO beta=1,BB%betaMax
+      BigZA(i+2*BB%NumOpenL, BB%NumOpenL+beta)=-BB%ZP(i+BB%NumOpenL,beta)
+      BigZB(i+2*BB%NumOpenL, BB%NumOpenL+beta)=BB%Z(i+BB%NumOpenL,beta)
     ENDDO
+  ENDDO
 
-    ALLOCATE(ZT(BB%betaMax,BB%betaMax))
-    !write(6,*) "Z:"
-!    call printmatrix(BB%Z,BB%betaMax,BB%betaMax,6)
-!    call printmatrix(BB%ZP,BB%betaMax,BB%betaMax,6)
+  CALL Mydggev(BB%NumOpenL+BB%betaMax,BigZA,BB%NumOpenL+BB%betaMax,BigZB,BB%NumOpenL+BB%betaMax,Dval,Dvec) !
+  j=1
+  DO i = 1,BB%NumOpenL+BB%betaMax
+    absd=ABS(Dval(i))
+    IF((absd.GE.1d-12).and.(absd.lt.1d12)) THEN
+      Dikeep(j)=i
+      BB%bf(j)=Dval(i)
+      j=j+1
+    ENDIF
+  ENDDO
 
-    ALLOCATE(temp0(BB%betaMax,BB%betaMax))
-    ZT = BB%Z
-    temp0 = 0d0
-    temp0 = MATMUL(TRANSPOSE(ZT),BB%Z)
-    !call dgemm('T','N',BB%betaMax,BB%betaMax,BB%betaMax,1.0d0,ZT,BB%betaMax,BB%Z,BB%betaMax,0.0d0,temp0,BB%betaMax) !
-
-    !WRITE(6,*) "Check norm:"
-    !CALL printmatrix(temp0,BB%betaMax,BB%betaMax,6)
-
-    ALLOCATE(Dikeep(BB%betaMax + BB%NumOpenL))
-    ALLOCATE(BigZA(BB%NumOpenL + BB%betaMax,BB%NumOpenL+BB%betaMax),BigZB(BB%NumOpenL+BB%betaMax,BB%NumOpenL+BB%betaMax)) !
-    ALLOCATE(Dvec(BB%NumOpenL+BB%betaMax,BB%NumOpenL+BB%betaMax))
-    ALLOCATE(Dval(BB%NumOpenL+BB%betaMax))
-
-    Dvec=0d0
-    BigZA=0d0
-    BigZB=0d0
-
-    DO i=1,BB%NumOpenL
-       DO beta=1,BB%NumOpenL
-          BigZA(i,beta)=BA%Zf(i,beta)
-          BigZA(i+BB%NumOpenL,beta)=BA%Zfp(i,beta)
-          !write(6,*) "using BA%Z(), BA%ZP= = ",BA%Zf(i,beta), -BA%Zfp(i,beta),BA%Zf(i,beta)*BA%bf(beta)
-       ENDDO
+  DO beta=1,BB%NumOpenR
+    !for each beta, construct the final state with constant log-derivative at the right boundary
+    DO i=1, BB%NumOpenR
+      BB%Zf(i,beta) = 0.0d0
+      DO betaprime = 1,BB%betaMax
+        BB%Zf(i,beta) =  BB%Zf(i,beta) + BB%Z(BB%NumOpenL+i,betaprime)*Dvec(BB%NumOpenL+betaprime,Dikeep(beta)) !
+      ENDDO
     ENDDO
-
-    DO i=1,BB%NumOpenL
-       DO beta=1,BB%betaMax
-          BigZA(i, BB%NumOpenL+beta) = -BB%Z(i,beta)
-          BigZA(i+BB%NumOpenL,beta+BB%NumOpenL) = BB%ZP(i,beta)
-       ENDDO
-    ENDDO
-
+    ! calculate the normalization of the final state
+    NewNorm=0.0d0
     DO i=1,BB%NumOpenR
-       DO beta=1,BB%betaMax
-          BigZA(i+2*BB%NumOpenL, BB%NumOpenL+beta)=-BB%ZP(i+BB%NumOpenL,beta)
-          BigZB(i+2*BB%NumOpenL, BB%NumOpenL+beta)=BB%Z(i+BB%NumOpenL,beta)
-       ENDDO
+      NewNorm=NewNorm+BB%Zf(i,beta)**2
     ENDDO
-
-    !print*, 'BigZA : '
-    !call printmatrix(BigZA, BB%NumOpenL+BB%betaMax, BB%NumOpenL+BB%betaMax,6)
-    !print*, 'BigZB : '
-    !call printmatrix(BigZB, BB%NumOpenL+BB%betaMax, BB%NumOpenL+BB%betaMax,6)
-
-    CALL Mydggev(BB%NumOpenL+BB%betaMax,BigZA,BB%NumOpenL+BB%betaMax,BigZB,BB%NumOpenL+BB%betaMax,Dval,Dvec) !
-    !print*, 'Eigenvalues of box-matching eigenproblem : '
-    !call printmatrix(Dval,BB%NumOpenL+BB%betaMax,1,6)
-
-!!$    print*, 'Dvec : '
-!!$    do j = 1,BB%betaMax
-!!$       write(6,*) (Dvec(j,k), k = 1,BB%betaMax)
-!!$    enddo
-    j=1
-    DO i = 1,BB%NumOpenL+BB%betaMax
-       IF((ABS(Dval(i)).GE.1e-12).and.(ABS(Dval(i)).lt.1e12)) THEN
-         !write(6,*) i, Dval(i)!, (Dvec(k,i), k=BB%NumOpenL+1,BB%NumOpenL+BB%betaMax)
-          Dikeep(j)=i
-          BB%bf(j)=Dval(i)
-          j=j+1
-       ENDIF
+    NewNorm=dsqrt(NewNorm)
+    ! normalize and set the derivative Zfp
+    DO i=1,BB%NumOpenR
+      BB%Zf(i,beta) = BB%Zf(i,beta)/NewNorm
+      BB%Zfp(i,beta) = -BB%Zf(i,beta)*BB%bf(beta)
     ENDDO
-    !write(6,*)
-    !print*, 'Final Number of Channels : ',j-1, "should be ",BB%NumOpenR
-    DO beta=1,BB%NumOpenR
-       !for each beta, construct the final state with constant log-derivative at the right boundary
-       !write(6,*) "beta value being calculated now is: ", beta, BB%bf(beta)
-       DO i=1, BB%NumOpenR
-          BB%Zf(i,beta) = 0.0d0
-          DO betaprime = 1,BB%betaMax
-             BB%Zf(i,beta) =  BB%Zf(i,beta) + BB%Z(BB%NumOpenL+i,betaprime)*Dvec(BB%NumOpenL+betaprime,Dikeep(beta)) !
-             !write(6,*) "adding...",BB%NumOpenL+i, betaprime, BB%Z(BB%NumOpenL+i,betaprime),"*",&
-             !     Dvec(BB%NumOpenL+betaprime,Dikeep(beta))
-          ENDDO
-          !write(6,*) i,beta,"Zf = ", BB%Zf(i,beta)
-       ENDDO
-       ! calculate the normalization of the final state
-       NewNorm=0.0d0
-       DO i=1,BB%NumOpenR
-          NewNorm=NewNorm+BB%Zf(i,beta)**2
-       ENDDO
-       NewNorm=dsqrt(NewNorm)
-       ! normalize and set the derivative Zfp
-       DO i=1,BB%NumOpenR
-          BB%Zf(i,beta) = BB%Zf(i,beta)/NewNorm
-          BB%Zfp(i,beta) = -BB%Zf(i,beta)*BB%bf(beta)
-       ENDDO
-    ENDDO
-    !PRINT*, 'Dvec : '
-    !CALL printmatrix(Dvec,BB%NumOpenL+BB%betaMax,BB%NumOpenL+BB%betaMax,6)
-    !print*, 'Zf'
-    !call printmatrix(BB%Zf,BB%NumOpenR,BB%NumOpenR,6)
+  ENDDO
 
-    DEALLOCATE(Dikeep,Dvec,Dval,BigZA,BigZB)
-    DEALLOCATE(temp0)
-    DEALLOCATE(tempnorm)
-    DEALLOCATE(ZT)
-  END SUBROUTINE BoxMatch
+  DEALLOCATE(Dikeep,Dvec,Dval,BigZA,BigZB)
+  DEALLOCATE(temp0)
+  DEALLOCATE(tempnorm)
+  DEALLOCATE(ZT)
+END SUBROUTINE BoxMatch
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
   !use this routine to test if the potential is right.  Looks ok!
@@ -1030,11 +982,9 @@ SUBROUTINE BoxMatch(BA, BB, BPD, EIG, dim, alphafact)
     ION=1
     NMX=3
     NCHAN=3
-!C
-!C      SETS UP EXAMPLE POTENTIAL FOR USE IN RPROP
-!C
 
-!C
+!C      SETS UP EXAMPLE POTENTIAL FOR USE IN RPROP
+
     DO I=1,NCHAN
        EL2 = lmom(I)*(lmom(I)+1)
        DO J=1,NCHAN
@@ -1092,6 +1042,4 @@ SUBROUTINE BoxMatch(BA, BB, BPD, EIG, dim, alphafact)
          ENDDO
       ENDDO
     END SUBROUTINE SetZeroPotential
-    !****************************************************************************************************
-
     !****************************************************************************************************
