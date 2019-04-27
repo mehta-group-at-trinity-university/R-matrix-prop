@@ -5,10 +5,11 @@ FORCEDP = #-fdefault-real-8 -fdefault-double-8
 INCLUDE = -I/usr/local/opt/lapack/include
 LAPACK =  -framework accelerate
 ARPACK = -L/Users/mehtan/Code/ARPACK/ARPACK -larpack_OSX
-OBJS  = besselnew.o Bsplines.o matrix_stuff.o RMATPROP2016.o Quadrature.o
+OBJS  = besselnew.o Bsplines.o matrix_stuff.o RMATPROP2016.o Quadrature.o \
+MorsePotential.o BalujaParameters.o zgensub.o
 
 RMATPROP2016.x:	   ${OBJS}
-	${CMP} ${DEBUG} ${OBJS} ${INCLUDE} ${ARPACK} ${LAPACK}  ${CMPFLAGS} ${FORCEDP} -o RMATPROP2016.x
+	${CMP} ${DEBUG} ${OBJS} ${INCLUDE} ${ARPACK} ${LAPACK} ${CMPFLAGS} ${FORCEDP} -o RMATPROP2016.x
 
 RMATPROP2016.o: RMATPROP2016.f90
 	${CMP} ${DEBUG} ${FORCEDP} ${CMPFLAGS} -c RMATPROP2016.f90
@@ -25,14 +26,28 @@ nrtype.mod: modules_qd.o
 modules_qd.o:	modules_qd.f90
 	${CMP} ${FORCEDP} -c modules_qd.f90
 
+MorsePotential.mod: MorsePotential.o
+	${CMP} ${FORCEDP} MorsePotential.o
+
+MorsePotential.o: MorsePotential.f90
+	${CMP} ${FORCEDP} -c MorsePotential.f90
+
 besselnew.o:	besselnew.f
 	${CMP} ${DEBUG} ${FORCEDP} ${CMPFLAGS} -c besselnew.f
 
 Quadrature.mod: Quadrature.o
-		${CMP} ${FORCEDP} Quadrature.o
+	${CMP} ${FORCEDP} Quadrature.o
 
 Quadrature.o: Quadrature.f90
 	${CMP} ${FORCEDP} -c Quadrature.f90
 
+zgensub.o: zgensub.f
+	${CMP} ${FORCEDP} -c zgensub.f
+
+BalujaParameters.mod: BalujaParameters.o
+	${CMP} ${FORCEDP} BalujaParameters.o
+
+BalujaParameters.o: BalujaParameters.f90
+	${CMP} ${FORCEDP} -c BalujaParameters.f90
 clean:
 	rm -f *.mod *.o *.x
