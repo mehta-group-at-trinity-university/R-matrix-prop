@@ -1,12 +1,11 @@
-CMP     = gfortran
+CMP = gfortran
 CMPFLAGS = -ffixed-line-length-132 -O3
 DEBUG   = -fcheck=all
 FORCEDP = #-fdefault-real-8 -fdefault-double-8
 INCLUDE = -I/usr/local/opt/lapack/include
 LAPACK =  -framework accelerate
 ARPACK = -L/Users/mehtan/Code/ARPACK/ARPACK -larpack_OSX
-OBJS  = besselnew.o Bsplines.o matrix_stuff.o RMATPROP2016.o Quadrature.o \
-MorsePotential.o BalujaParameters.o zgensub.o
+OBJS = besselnew.o Bsplines.o matrix_stuff.o Quadrature.o zgensub.o MorsePotential.o BalujaParameters.o DipoleDipole.o RMATPROP2016.o
 
 RMATPROP2016.x:	   ${OBJS}
 	${CMP} ${DEBUG} ${OBJS} ${INCLUDE} ${ARPACK} ${LAPACK} ${CMPFLAGS} ${FORCEDP} -o RMATPROP2016.x
@@ -49,5 +48,12 @@ BalujaParameters.mod: BalujaParameters.o
 
 BalujaParameters.o: BalujaParameters.f90
 	${CMP} ${FORCEDP} -c BalujaParameters.f90
+
+DipoleDipole.mod: DipoleDipole.o
+	${CMP} ${FORCEDP} DipoleDipole.o
+
+DipoleDipole.o: DipoleDipole.f90
+	${CMP} ${FORCEDP} -c DipoleDipole.f90
+
 clean:
 	rm -f *.mod *.o *.x

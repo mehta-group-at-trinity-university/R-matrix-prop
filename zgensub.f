@@ -64,6 +64,9 @@ C
       END
 C
       FUNCTION THRJ(J1D,J2D,J3D,M1D,M2D,M3D)
+C     Gives the Wigner 3-j symbol:
+C     (j1 j2 j3)
+C     (m1 m2 m3)
       IMPLICIT REAL*8(A-H,O-Z)
       X1 = J1D/2.D0
       X2 = J2D/2.D0

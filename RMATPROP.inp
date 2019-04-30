@@ -10,8 +10,8 @@ xMin		xMax		xNumPoints 	LegPoints
 NumBoxes	Left		Right		kStart		kEnd
 10	        0	     	2   		1d20  		1d20
 
-Energy
-2.5d0
+Energy   lmax
+2.5d0    5
 
 
 !----------------------------------------------------------------------------------------------------
