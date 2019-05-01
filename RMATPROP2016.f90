@@ -36,9 +36,6 @@ CONTAINS
     READ(7,*)
     READ(7,*)
     READ(7,*) Energy
-
-    !set the maximum langular momentum to twice the number of channels
-    !since we do odd and even partial waves separately.
     lmax = 2*NumChannels
     CLOSE(unit=7)
     EffDim = NumParticles*SpatialDim - SpatialDim
@@ -462,7 +459,6 @@ PROGRAM main
   TYPE(DPData) :: DP
   DOUBLE PRECISION, ALLOCATABLE :: evec(:,:), eval(:)!, temp0(:,:)
   DOUBLE PRECISION, ALLOCATABLE :: Egrid(:), xprim(:)
-  double precision time(10)
 
   DOUBLE PRECISION xDelt
   INTEGER NumE, iE, beta, i, iBox,lx,kx

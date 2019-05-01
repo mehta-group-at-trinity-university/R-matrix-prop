@@ -10,8 +10,13 @@ xMin		xMax		xNumPoints 	LegPoints
 NumBoxes	Left		Right		kStart		kEnd
 200	        0	     	2   		1d20  		1d20
 
+<<<<<<< HEAD
 Energy
 2.5d0
+=======
+Energy   lmax
+2.5d0    5
+>>>>>>> parent of 2a0185e... Still performs the Morse potential calculation at this point
 
 
 !----------------------------------------------------------------------------------------------------
