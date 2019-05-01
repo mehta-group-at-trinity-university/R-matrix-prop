@@ -1,61 +1,61 @@
-module DipoleDipole
-  use Quadrature
-  use DataStructures
+MODULE DipoleDipole
+  USE Quadrature
+  USE DataStructures
 
-  type DPData
-    integer lmax,ml
-    double precision, allocatable :: cllp(:,:,:)
-    logical even
-  end type DPData
+  TYPE DPData
+     INTEGER lmax,ml
+     DOUBLE PRECISION, ALLOCATABLE :: cllp(:,:,:)
+     LOGICAL even
+  END TYPE DPData
 
 CONTAINS
-  subroutine AllocateDP(DP)
-    implicit NONE
-    type(DPData) DP
-    allocate(DP%cllp(0:DP%lmax,0:DP%lmax,0:DP%lmax))
+  SUBROUTINE AllocateDP(DP)
+    IMPLICIT NONE
+    TYPE(DPData) DP
+    ALLOCATE(DP%cllp(0:DP%lmax,0:DP%lmax,0:DP%lmax))
 
-  end subroutine AllocateDP
+  END SUBROUTINE AllocateDP
 
-  subroutine MakeDipoleDipoleCouplingMatrix(DP)
-    implicit none
-    type(DPData) :: DP
-    integer l,lp,m
-    double precision, external :: THRJ
-    double precision tj1,tj2,phase,prefact
+  SUBROUTINE MakeDipoleDipoleCouplingMatrix(DP)
+    IMPLICIT NONE
+    TYPE(DPData) :: DP
+    INTEGER l,lp,m
+    DOUBLE PRECISION, EXTERNAL :: THRJ
+    DOUBLE PRECISION tj1,tj2,phase,prefact
 
 
     DP%cllp=0d0
-      do l=0,DP%lmax
-        do lp=MAX(l-2,0),MIN(DP%lmax,l+2),2
-        !do lp=0,lmax
-          prefact=dble((2*l+1)*(2*lp+1))
+    DO l=0,DP%lmax
+       DO lp=MAX(l-2,0),MIN(DP%lmax,l+2),2
+          !do lp=0,lmax
+          prefact=DBLE((2*l+1)*(2*lp+1))
           prefact=dsqrt(prefact)
-          do m = 0,l
-            phase=(-1)**m
-            tj1 = THRJ(2*l,2*2,2*lp,-2*m,0,2*m)
-            tj2 = THRJ(2*l,2*2,2*lp,0,0,0)
-            DP%cllp(l,lp,m)=prefact*phase*tj1*tj2
-            DP%cllp(lp,l,m)=DP%cllp(l,lp,m)
+          DO m = 0,l
+             phase=(-1)**m
+             tj1 = THRJ(2*l,2*2,2*lp,-2*m,0,2*m)
+             tj2 = THRJ(2*l,2*2,2*lp,0,0,0)
+             DP%cllp(l,lp,m)=prefact*phase*tj1*tj2
+             DP%cllp(lp,l,m)=DP%cllp(l,lp,m)
           ENDDO
-        ENDDO
-      ENDDO
+       ENDDO
+    ENDDO
 
-  end subroutine MakeDipoleDipoleCouplingMatrix
+  END SUBROUTINE MakeDipoleDipoleCouplingMatrix
 
   SUBROUTINE SetDipoleDipolePot(BPD,DP)
 
     IMPLICIT NONE
     TYPE(BPData) BPD
-    type(DPData) DP
-    integer m,l,lp
+    TYPE(DPData) DP
+    INTEGER m,l,lp
     INTEGER kx,lx,mch,nch,NChan
     DOUBLE PRECISION ax,bx,xScaledZero
     DOUBLE PRECISION xScale(BPD%xNumPoints)
 
-    if(mod(DP%lmax,2).eq.0) then
-      Nchan=DP%lmax/2
+    IF(MOD(DP%lmax,2).EQ.0) THEN
+       Nchan=DP%lmax/2
     ELSE
-      Nchan=(DP%lmax-1)/2
+       Nchan=(DP%lmax-1)/2
     ENDIF
 
     BPD%Pot(:,:,:,:) = 0d0
@@ -69,14 +69,15 @@ CONTAINS
           BPD%x(lx,kx) = xScale(kx)*xLeg(lx) + xScaledZero
           DO mch = 1,NChan
              DO nch = 1, mch
-               if(DP%even) THEN
-                 l=2*(mch-1)
-                 lp=2*(nch-1)
-               ELSE
-                 l=2*(mch-1)+1
-                 lp=2*(nch-1)+1
-               ENDIF
+                IF(DP%even) THEN
+                   l=2*(mch-1)
+                   lp=2*(nch-1)
+                ELSE
+                   l=2*(mch-1)+1
+                   lp=2*(nch-1)+1
+                ENDIF
                 BPD%Pot(mch,nch,lx,kx) = -2d0*DP%Cllp(l,lp,DP%ml)/BPD%x(lx,kx)**3
+                IF(mch.EQ.nch) BPD%Pot(mch,nch,lx,kx) = BPD%Pot(mch,nch,lx,kx) + 0.5d0*l*(l+1)/BPD%x(lx,kx)**2
                 BPD%Pot(nch,mch,lx,kx) = BPD%Pot(mch,nch,lx,kx)
              ENDDO
           ENDDO
@@ -84,4 +85,4 @@ CONTAINS
     ENDDO
 
   END SUBROUTINE SetDipoleDipolePot
-end module DipoleDipole
+END MODULE DipoleDipole

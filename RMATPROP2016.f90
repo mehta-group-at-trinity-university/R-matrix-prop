@@ -1,4 +1,3 @@
-
 !****************************************************************************************************
 MODULE GlobalVars
   IMPLICIT NONE
@@ -85,8 +84,8 @@ MODULE DataStructures
 
   END TYPE BoxData
   TYPE ScatData
-     DOUBLE PRECISION, ALLOCATABLE :: K(:,:), R(:,:), f(:,:), sigma(:,:)
-     COMPLEX*8, ALLOCATABLE :: S(:,:), T(:,:)
+     DOUBLE PRECISION, ALLOCATABLE :: K(:,:), R(:,:), sigma(:,:)
+     complex*16, ALLOCATABLE :: f(:,:), S(:,:), T(:,:)
 
   END TYPE ScatData
 
@@ -96,8 +95,8 @@ CONTAINS
     IMPLICIT NONE
     TYPE(ScatData) SD
     INTEGER N
-    ALLOCATE(SD%K(N,N),SD%R(N,N),SD%f(N,N),SD%sigma(N,N))
-    ALLOCATE(SD%S(N,N),SD%T(N,N))
+    ALLOCATE(SD%K(N,N),SD%R(N,N),SD%sigma(N,N))
+    ALLOCATE(SD%f(N,N),SD%S(N,N),SD%T(N,N))
     SD%K=0d0
     SD%R=0d0
     SD%f=0d0
@@ -169,7 +168,6 @@ CONTAINS
     DEALLOCATE(B%Z,B%ZP)
     DEALLOCATE(B%b)
     DEALLOCATE(B%NBeta,B%Norm,B%Zf,B%bf,B%Zfp)
-
 
   END SUBROUTINE DeAllocateBox
   !****************************************************************************************************
@@ -332,10 +330,14 @@ CONTAINS
     DOUBLE PRECISION mu, EE,rm,d,alpha
     DOUBLE PRECISION, ALLOCATABLE :: s(:),c(:),sp(:),cp(:)
     DOUBLE PRECISION, ALLOCATABLE :: Imat(:,:),Jmat(:,:)
-    DOUBLE PRECISION rhypj,rhypy,rhypjp,rhypyp
+    DOUBLE PRECISION rhypj,rhypy,rhypjp,rhypyp,Pi
     DOUBLE PRECISION k(BPD%NumChannels),Eth(BPD%NumChannels)
+    complex*16, allocatable :: tmp(:,:),Identity(:,:)
+    complex*16  II
     INTEGER i,j,no,nw,nc,beta
 
+    II=(0d0,1d0)
+    Pi=dacos(-1d0)
     rm=BPD%xr
     no=0
     nw=0
@@ -357,7 +359,7 @@ CONTAINS
        STOP
     ENDIF
 
-    ALLOCATE(s(no),c(no),Imat(no,no),Jmat(no,no))
+    ALLOCATE(s(no),c(no),Imat(no,no),Jmat(no,no),tmp(no,no))
     ALLOCATE(sp(no),cp(no))
     DO i = 1,no
        CALL hyperrjry(INT(d),alpha,BPD%lam(i),k(i)*rm,rhypj,rhypy,rhypjp,rhypyp)
@@ -378,7 +380,10 @@ CONTAINS
     CALL SqrMatInv(Imat, no)
     SD%K = MATMUL(Jmat,Imat)
 
+    allocate(Identity(no,no))
+    Identity = 0d0;
     DO i=1,B%NumOpenR
+!      Identity(i,i) = 1d0
        DO j=1,B%NumOpenR
           SD%R(i,j)=0.0d0
           DO beta = 1, B%NumOpenR
@@ -387,8 +392,22 @@ CONTAINS
        ENDDO
     ENDDO
 
-    !call sqrmatinv(BB%Zfp,BB%NumOpenR)  This gives the same result as the code segment  executed above
-    !SD%R = matmul(BB%Zf,BB%Zfp)
+    !call sqrmatinv(B%Zfp,B%NumOpenR)  !This gives the same result as the code segment  executed above
+    !SD%R = matmul(B%Zf,B%Zfp)
+
+    tmp = Identity - II*SD%K
+    SD%S = Identity + II*SD%K
+    call CompSqrMatInv(tmp,no)
+    SD%S = MATMUL(SD%S,tmp)
+    SD%T = -II*0.5d0*(SD%S-Identity)
+
+    ! S-wave only (assuming the channels are not partial waves)
+    do i=1,no
+      do j=1,no
+        SD%f(i,j) = dsqrt(4d0*Pi/k(i)/k(j))*SD%T(i,j)
+        SD%sigma(i,j) = 4d0*Pi*SD%f(i,j)*conjg(SD%f(i,j))
+      enddo
+    enddo
 
     DEALLOCATE(s,c,Imat,Jmat,sp,cp)
   END SUBROUTINE CalcK
@@ -489,9 +508,9 @@ PROGRAM main
   CALL AllocateDP(DP)
 
   CALL MakeDipoleDipoleCouplingMatrix(DP)
-  WRITE(6,*) "cllp for m=0:"
-  CALL printmatrix(DP%cllp(0:DP%lmax,0:DP%lmax,0),DP%lmax,DP%lmax,6)
-  STOP
+!  WRITE(6,*) "cllp for m=0:"
+!  CALL printmatrix(DP%cllp(0:DP%lmax,0:DP%lmax,0),DP%lmax,DP%lmax,6)
+!  STOP
 
   !-------------------------------------------------------------------
   ! Intitializes some BPD1 variables to the input values.
