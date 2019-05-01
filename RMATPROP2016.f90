@@ -36,6 +36,7 @@ CONTAINS
     READ(7,*)
     READ(7,*)
     READ(7,*) Energy
+
     lmax = 2*NumChannels
     CLOSE(unit=7)
     EffDim = NumParticles*SpatialDim - SpatialDim
