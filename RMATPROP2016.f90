@@ -9,7 +9,7 @@ MODULE GlobalVars
   ! Typical choice is either AlphaFactor = 0 (reduced wavefunction = wavefunction), or AlphaFactor = (EffDim - 1)/2 (eliminates 1st derivative terms from KE)
   !----------------------------------------------------------------------------------------------------
   DOUBLE PRECISION reducedmass, xStart, xEnd, energy,kStart,kEnd
-  DOUBLE PRECISION SpatialDim, EffDim
+  DOUBLE PRECISION SpatialDim, EffDim, Pi
   DOUBLE PRECISION, ALLOCATABLE :: mass(:)
   CHARACTER*64 InputFile
   COMPLEX*16 II
@@ -37,7 +37,7 @@ CONTAINS
     READ(7,*)
     READ(7,*)
     READ(7,*) Energy
-
+    Pi = dacos(-1d0)
     CLOSE(unit=7)
     EffDim = NumParticles*SpatialDim - SpatialDim
     !AlphaFactor = 0d0
@@ -320,6 +320,7 @@ END MODULE DataStructures
   !****************************************************************************************************
   MODULE Scattering
     USE DataStructures
+    USE GlobalVars
   CONTAINS
     SUBROUTINE CalcK(B,BPD,SD,mu,d,alpha,EE,Eth)
       IMPLICIT NONE
@@ -358,10 +359,15 @@ END MODULE DataStructures
       ALLOCATE(sp(no),cp(no))
       DO i = 1,no
          CALL hyperrjry(INT(d),alpha,BPD%lam(i),k(i)*rm,rhypj,rhypy,rhypjp,rhypyp)
-         s(i) = dsqrt(mu)*rhypj  ! the factor of sqrt(mu) is for energy normalization
-         c(i) = -dsqrt(mu)*rhypy ! the factor of sqrt(mu) is for energy normalization
-         sp(i) = k(i)*dsqrt(mu)*rhypjp
-         cp(i) = -k(i)*dsqrt(mu)*rhypyp
+         ! s(i) = dsqrt(mu)*rhypj  ! the factor of sqrt(mu) is for energy normalization
+         ! c(i) = -dsqrt(mu)*rhypy ! the factor of sqrt(mu) is for energy normalization
+         ! sp(i) = k(i)*dsqrt(mu)*rhypjp
+         ! cp(i) = -k(i)*dsqrt(mu)*rhypyp
+         s(i) = 1d0/dsqrt(Pi*k(i))*rhypj  ! the factor of sqrt(mu) is for energy normalization
+         c(i) = -1d0/dsqrt(Pi*k(i))*rhypy ! the factor of sqrt(mu) is for energy normalization
+         sp(i) = k(i)*1d0/dsqrt(Pi*k(i))*rhypjp
+         cp(i) = -k(i)*1d0/dsqrt(Pi*k(i))*rhypyp
+
       ENDDO
       Imat=0d0
       Jmat=0d0
@@ -371,7 +377,7 @@ END MODULE DataStructures
             Jmat(i,beta) = (B%Zf(i,beta)*sp(i) - B%Zfp(i,beta)*s(i))/(c(i)*sp(i)-s(i)*cp(i))
          ENDDO
       ENDDO
-
+      !Jmat=Imat !use this to test if the matrix inverse is working
       CALL SqrMatInv(Imat, no)
       SD%K = MATMUL(Jmat,Imat)
 
@@ -636,6 +642,10 @@ PROGRAM main
   LegendreFile = 'Legendre.dat'
   ALLOCATE(xLeg(LegPoints),wLeg(LegPoints))
   CALL GetGaussFactors(LegendreFile,LegPoints,xLeg,wLeg)
+
+
+!  call checkbessel(0.0001d0,10d0,100,0d0,3,100)
+!  stop
   !---------------------------------------------------------------------
   ! allocate the data for the Boxes
   !---------------------------------------------------------------------
@@ -661,6 +671,9 @@ PROGRAM main
     WRITE(6,*) "Box",i,Boxes(i)%xl,Boxes(i)%xr
     CALL printmatrix(Boxes(i)%Zf,Boxes(i)%NumOpenR,Boxes(i)%NumOpenR,6)
   ENDDO
+
+
+
 
   !-------------------------------------------------------------------
   ! Intitializes some BPD1 variables to the input values.
@@ -957,22 +970,27 @@ END SUBROUTINE BoxMatch
     IMPLICIT NONE
     DOUBLE PRECISION xmin, xmax
     DOUBLE PRECISION lam,hypj,hypy,hypjp,hypyp,hypi,hypk,hypip,hypkp
+    double precision etest,mutest,ethtest,ktest
     DOUBLE PRECISION, ALLOCATABLE :: x(:)
     INTEGER d,file
     INTEGER n, npts
 
+    mutest=0.5D0
+    etest=2.5d0
+    ethtest=0.0d0
+    ktest = dsqrt(2d0*mutest*(etest-ethtest))
     ALLOCATE(x(npts))
     DO n = 1, npts
        x(n) = xmin + (n-1)*(xmax-xmin)/DBLE(npts-1)
     ENDDO
     DO n=1,npts
        !call hyperjy(d,lam,x(n),hypj,hypy,hypjp,hypyp)
-       CALL hyperrjry(d,DBLE(0.5d0*(d-1d0)),lam,x(n),hypj,hypy,hypjp,hypyp)
+       CALL hyperrjry(d,DBLE(0.5d0*(d-1d0)),lam,ktest*x(n),hypj,hypy,hypjp,hypyp)
        !call hyperik(d,lam,x(n),hypj,hypy,hypjp,hypyp)
        !call hyperrirk(d,dble(0.5d0*(d-1d0)),lam,x(n),hypj,hypy,hypjp,hypyp)
-       WRITE(file,20) x(n), hypj, hypy, hypjp, hypyp
+       WRITE(file,*) x(n), hypj, hypy, hypjp, hypyp
     ENDDO
-20  FORMAT(1P,100D12.4)
+20  FORMAT(1P,100E12.4)
   END SUBROUTINE checkbessel
   !****************************************************************************************************
     SUBROUTINE SetZeroPotential(BPD)

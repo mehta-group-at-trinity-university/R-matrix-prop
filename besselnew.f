@@ -1,8 +1,8 @@
-!cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-! this subroutine calculates the hyerpspehrical besselfunctions multiplied by x**alpha
-!     rj = (x**alpha*hypj)
-!     rjp = alpha*x**(alpha-1)*hypj + x**alpha*hypjp
-! 
+c!cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+c! this subroutine calculates the hyerpspehrical besselfunctions multiplied by x**alpha
+c!     rj = (x**alpha*hypj)
+c!     rjp = alpha*x**(alpha-1)*hypj + x**alpha*hypjp
+c!
       subroutine hyperrjry(d,alpha,lam,x,rj,ry,rjp,ryp)
       implicit none
       integer d,df
@@ -26,7 +26,7 @@
       rjp = x**alpha*(alpha*hypj/x + hypjp)
       ry = x**alpha*hypy
       ryp = x**alpha*(alpha*hypy/x + hypyp)
-      
+
       end
 !cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 ! This is a subroutine that returns the hyperspherical bessel functions as defined in Avery
@@ -66,7 +66,7 @@
 !     Knu(x) = exp(-x) * beta(x)
 !     This routine returns alpha, beta, alpha', beta', I'/I, and K'/K
       call MyScaledBessIK(x, order, ai, bk, aip, bkp, ldi,ldk)
-      
+
       prefact = mygamma(halfd-1.d0)*2**(halfd-2d0)/df
       hypi = prefact*dexp(x)*ai*x**(-halfd+1d0)
       hypk = prefact*dexp(-x)*bk*x**(-halfd+1d0)
@@ -77,9 +77,9 @@
       rhypip = x**alpha*(alpha*hypi/x + hypip)
       rhypk = x**alpha*hypk
       rhypkp = x**alpha*(alpha*hypk/x + hypkp)
-      
+
       end
-!cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc      
+!cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 !cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 ! This is a subroutine that returns the modified hyperspherical bessel functions.
       subroutine hyperik(d,lam,x,hypi,hypk,hypip,hypkp)
@@ -98,7 +98,7 @@
 !     Knu(x) = exp(-x) * beta(x)
 !     This routine returns alpha, beta, alpha', beta', I'/I, and K'/K
       call MyScaledBessIK(x, order, ai, bk, aip, bkp, ldi,ldk)
-      
+
       prefact = mygamma(halfd-1.d0)*2**(halfd-2d0)/df
       hypi = prefact * dexp(x)*ai * x**(-halfd+1d0)
       hypk = prefact * dexp(-x)*bk * x**(-halfd+1d0)
@@ -106,23 +106,23 @@
       hypkp = prefact*0.5d0*dexp(-x)*x**(-halfd)*(2d0*x*bkp - bk*(d+2*x-2))
 
       end
-!cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc      
+!cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
       subroutine doubfact(n,df)
       implicit none
       integer n,m,df
 
       df=1
       m=n
-      
+
       do while (m.gt.1)
          df=df*m
          write(6,*) m, df
          m=m-2
       end do
-      
+
       return
       end
-!cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc      
+!cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
       SUBROUTINE sphbesjy(n,x,sj,sy,sjp,syp) ! change norm
 !NB:  This is NOT the spherical bessel function jn(x), instead it is x*jn(x), the Riccati function
 !leaving a factor of sqrt(x) in the numerator of the prefactor
@@ -130,7 +130,7 @@
       DOUBLE PRECISION sj,sjp,sy,syp,x
 !U    USES bessjy
       DOUBLE PRECISION factor,order,rj,rjp,ry,ryp,RTPIO2
-      PARAMETER (RTPIO2=1.25331413731550d0) 
+      PARAMETER (RTPIO2=1.25331413731550d0)
       if(n.lt.0.d0.or.x.le.0.d0) write(6,*) 'bad arguments in sphbesjy'
       order=n+0.5d0
       call bessjy(x,order,rj,ry,rjp,ryp)
@@ -151,13 +151,13 @@
       PARAMETER (RTPIO2=1.25331413731550d0)
       PARAMETER (RT2OPI=0.7978845608028654d0)
       if(n.lt.0.d0.or.x.le.0.d0) write(6,*) 'bad arguments in sphbesik'
-      order=n+0.5d0 
+      order=n+0.5d0
       call bessik(x,order,ri,rk,rip,rkp)
       factor=RT2OPI*sqrt(x)
       si=factor*ri
       sk=factor*rk
       sip=factor*rip+si/(2.d0*x)
-      skp=factor*rkp+sk/(2.d0*x)      
+      skp=factor*rkp+sk/(2.d0*x)
       return
       END SUBROUTINE sphbesik
 !cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
@@ -182,7 +182,7 @@ c$$$  si=factor*ri
 c$$$  sk=factor*rk
 c$$$  sjp=factor*rip+si/(2.d0*x)
 c$$$  syp=factor*rkp+sk/(2.d0*x)
-      
+
       call MyScaledBessIK(x, order, ri, rk, rip, rkp, ldi,ldk)
 !     Inu(x) = exp(x) * alpha(x)
 !     Knu(x) = exp(-x) * beta(x)
@@ -194,7 +194,7 @@ c$$$  syp=factor*rkp+sk/(2.d0*x)
       bigip = exp(x-xscale)*(rip+ri)
       sip = factor*bigip + si/(2.d0*x)
       skp = factor*bigkp + sk/(2.d0*x)
-      ldi = sip/si 
+      ldi = sip/si
       ldk = skp/sk
       return
       END SUBROUTINE Mysphbesik
@@ -442,28 +442,28 @@ c$$$  syp=factor*rkp+sk/(2.d0*x)
      >        + (mu - 1.d0)*(mu - 9.d0)/(2.d0*(8.d0*x)**2)
      >        - (mu - 1.d0)*(mu - 9.d0)*(mu - 25.d0)/(6.d0*(8.d0*x)**3)
      >        + (mu - 1.d0)*(mu - 9.d0)*(mu - 25.d0)*(mu - 49.d0)/(24.d0*(8.d0*x)**4))
-         
-         alphap = ((1.d0/x)**5.5d0*(-99225.d0 + 464976.d0*xnu**2 - 
-     -        32.d0*(3.d0*x*(525.d0 + 8.d0*x*(45.d0 + 16.d0*x*(3.d0 + 8.d0*x))) - 
-     -        4.d0*x*(1813.d0 + 48.d0*x*(25.d0 + 24.d0*x))*xnu**2 + 
-     -        (8883.d0 + 80.d0*x*(49.d0 + 24.d0*x))*xnu**4 - 
+
+         alphap = ((1.d0/x)**5.5d0*(-99225.d0 + 464976.d0*xnu**2 -
+     -        32.d0*(3.d0*x*(525.d0 + 8.d0*x*(45.d0 + 16.d0*x*(3.d0 + 8.d0*x))) -
+     -        4.d0*x*(1813.d0 + 48.d0*x*(25.d0 + 24.d0*x))*xnu**2 +
+     -        (8883.d0 + 80.d0*x*(49.d0 + 24.d0*x))*xnu**4 -
      -        56.d0*(27.d0 + 8.d0*x)*xnu**6.d0 + 72.d0*xnu**8)))/
      -        (196608.d0*Sqrt(2.d0*Pi))
-         
+
          beta =  sqrt(pi/(2.d0*x))*(1.d0 + (mu - 1.d0)/(8.d0*x)
      >        + (mu - 1.d0)*(mu - 9.d0)/(2.d0*(8.d0*x)**2)
      >        + (mu - 1.d0)*(mu - 9.d0)*(mu - 25.d0)/(6.d0*(8.d0*x)**3)
      >        + (mu - 1.d0)*(mu - 9.d0)*(mu - 25.d0)*(mu - 49.d0)/(24.d0*(8.d0*x)**4))
-         
+
          betap = (Sqrt(Pi/2.d0)*(1/x)**5.5d0*
-     -        (-99225 + 464976*xnu**2 - 
-     -        32*(3*x*(-525 + 8*x*(45 + 16*x*(-3 + 8*x))) + 
-     -        4*x*(1813 + 48*x*(-25 + 24*x))*xnu**2 + 
-     -        (8883 + 80*x*(-49 + 24*x))*xnu**4 + 
+     -        (-99225 + 464976*xnu**2 -
+     -        32*(3*x*(-525 + 8*x*(45 + 16*x*(-3 + 8*x))) +
+     -        4*x*(1813 + 48*x*(-25 + 24*x))*xnu**2 +
+     -        (8883 + 80*x*(-49 + 24*x))*xnu**4 +
      -        56*(-27 + 8*x)*xnu**6 + 72*xnu**8)))/196608.d0
 
       else
-         
+
          call bessik(x,xnu,ri,rk,rip,rkp)
          alphap = dexp(-x)*(rip-ri)
          alpha = dexp(-x)*ri
@@ -474,7 +474,7 @@ c$$$  syp=factor*rkp+sk/(2.d0*x)
       ldk = +1.d0 +  betap/beta
 
       end
-!cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc      
+!cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
       SUBROUTINE bessik(x,xnu,ri,rk,rip,rkp)
       INTEGER MAXIT
       DOUBLE PRECISION ri,rip,rk,rkp,x,xnu,XMIN
@@ -509,7 +509,7 @@ CU    USES beschb
          if(abs(del-1.d0).lt.EPS) goto 1
  11   continue
       write(6,*)  'x too large in bessik; try asymptotic expansion: x = ', x
-      read(*,*) 
+      read(*,*)
  1    continue
       ril=FPMIN
       ripl=h*ril
@@ -559,7 +559,7 @@ CU    USES beschb
           if(abs(del).lt.abs(sum)*EPS)goto 2
  13    continue
        write(6,*)  'bessk series failed to converge'
-        read(*,*) 
+        read(*,*)
 2       continue
         rkmu=sum
         rk1=sum1*xi2
@@ -591,7 +591,7 @@ CU    USES beschb
           if(abs(dels/s).lt.EPS)goto 3
  14    continue
        write(6,*)  'bessik: failure to converge in cf2'
-       read(*,*) 
+       read(*,*)
 3       continue
         h=a1*h
         rkmu=sqrt(PI/(2.d0*x))*exp(-x)/s
