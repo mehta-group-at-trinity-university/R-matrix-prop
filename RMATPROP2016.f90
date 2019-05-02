@@ -565,7 +565,7 @@ PROGRAM main
   CALL InitMorse(M)
 
   ! make the energy grid
-  NumE=20
+  NumE=2000
   ALLOCATE(Egrid(NumE))
   CALL makeEgrid(Egrid,NumE,M%Eth(2)+0.01d0,M%Eth(3)-0.01d0,"linear")
 
