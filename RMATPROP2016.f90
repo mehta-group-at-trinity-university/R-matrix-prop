@@ -365,10 +365,14 @@ CONTAINS
     DO i = 1,no
       Identity(i,i) = 1d0
        CALL hyperrjry(INT(d),alpha,BPD%lam(i),k(i)*rm,rhypj,rhypy,rhypjp,rhypyp)
-       s(i) = dsqrt(mu)*rhypj  ! the factor of sqrt(mu) is for energy normalization
-       c(i) = -dsqrt(mu)*rhypy ! the factor of sqrt(mu) is for energy normalization
-       sp(i) = k(i)*dsqrt(mu)*rhypjp
-       cp(i) = -k(i)*dsqrt(mu)*rhypyp
+       ! s(i) = dsqrt(mu)*rhypj  ! the factor of sqrt(mu) is for energy normalization
+       ! c(i) = -dsqrt(mu)*rhypy ! the factor of sqrt(mu) is for energy normalization
+       ! sp(i) = k(i)*dsqrt(mu)*rhypjp
+       ! cp(i) = -k(i)*dsqrt(mu)*rhypyp
+       s(i) = 1d0/dsqrt(Pi*k(i))*rhypj  ! the factor of sqrt(mu) is for energy normalization
+       c(i) = -1d0/dsqrt(Pi*k(i))*rhypy ! the factor of sqrt(mu) is for energy normalization
+       sp(i) = k(i)*1d0/dsqrt(Pi*k(i))*rhypjp
+       cp(i) = -k(i)*1d0/dsqrt(Pi*k(i))*rhypyp
     ENDDO
     Imat=0d0
     Jmat=0d0
