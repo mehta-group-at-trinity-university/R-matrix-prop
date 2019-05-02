@@ -359,7 +359,11 @@ CONTAINS
 
     ALLOCATE(s(no),c(no),Imat(no,no),Jmat(no,no),tmp(no,no))
     ALLOCATE(sp(no),cp(no))
+    allocate(Identity(no,no))
+    Identity = 0d0;
+
     DO i = 1,no
+      Identity(i,i) = 1d0
        CALL hyperrjry(INT(d),alpha,BPD%lam(i),k(i)*rm,rhypj,rhypy,rhypjp,rhypyp)
        s(i) = dsqrt(mu)*rhypj  ! the factor of sqrt(mu) is for energy normalization
        c(i) = -dsqrt(mu)*rhypy ! the factor of sqrt(mu) is for energy normalization
@@ -378,12 +382,9 @@ CONTAINS
     CALL SqrMatInv(Imat, no)
     SD%K = MATMUL(Jmat,Imat)
 
-    allocate(Identity(no,no))
-    Identity = 0d0;
+    SD%R=0.0d0
     DO i=1,B%NumOpenR
-!      Identity(i,i) = 1d0
        DO j=1,B%NumOpenR
-          SD%R(i,j)=0.0d0
           DO beta = 1, B%NumOpenR
              SD%R(i,j) = SD%R(i,j) - B%Zf(i,beta)*B%Zf(j,beta)/B%bf(beta) !
           ENDDO
@@ -393,19 +394,19 @@ CONTAINS
     !call sqrmatinv(B%Zfp,B%NumOpenR)  !This gives the same result as the code segment  executed above
     !SD%R = matmul(B%Zf,B%Zfp)
 
-    tmp = Identity - II*SD%K
-    SD%S = Identity + II*SD%K
-    call CompSqrMatInv(tmp,no)
-    SD%S = MATMUL(SD%S,tmp)
-    SD%T = -II*0.5d0*(SD%S-Identity)
-
-    ! S-wave only (assuming the channels are not partial waves)
-    do i=1,no
-      do j=1,no
-        SD%f(i,j) = dsqrt(4d0*Pi/k(i)/k(j))*SD%T(i,j)
-        SD%sigma(i,j) = 4d0*Pi*SD%f(i,j)*conjg(SD%f(i,j))
-      enddo
-    enddo
+    !tmp = Identity - II*SD%K
+    !write(6,*) "Identity matrix:"
+    !call printmatrix(Identity,no,no,6)
+    !write(6,*) "K matrix:"
+    !call printmatrix(SD%K,no,no,6)
+    !write(6,*) "real part of 1 - II*K"
+    !call printmatrix(realpart(tmp),no,no,6)
+    !write(6,*) "Imaginary part of 1 - II*K"
+    !call printmatrix(aimag(tmp),no,no,6)
+    !SD%S = Identity + II*SD%K
+    !call CompSqrMatInv(tmp,no)
+    !SD%S = MATMUL(SD%S,tmp)
+    !SD%T = -II*0.5d0*(SD%S-Identity)
 
     DEALLOCATE(s,c,Imat,Jmat,sp,cp)
   END SUBROUTINE CalcK
@@ -564,7 +565,7 @@ PROGRAM main
   CALL InitMorse(M)
 
   ! make the energy grid
-  NumE=200
+  NumE=20
   ALLOCATE(Egrid(NumE))
   CALL makeEgrid(Egrid,NumE,M%Eth(2)+0.01d0,M%Eth(3)-0.01d0,"linear")
 
@@ -607,7 +608,9 @@ PROGRAM main
         SD%K=0d0
         CALL CalcK(Boxes(iBox),BPD,SD,reducedmass,EffDim,AlphaFactor,Egrid(iE),M%Eth)
      ENDDO
-     WRITE(6,*) Energy, SD%K
+     !WRITE(6,*) Energy, SD%sigma(1,1), SD%sigma(1,2), SD%sigma(2,1), SD%sigma(2,2)
+     WRITE(6,*)  "K-matrix:"
+     call printmatrix(SD%K,2,2,6)
      WRITE(10,*) Energy, SD%K
   ENDDO
 
