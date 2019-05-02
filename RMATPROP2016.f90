@@ -343,7 +343,7 @@ CONTAINS
 
     DO i = 1,BPD%NumChannels
        IF (EE.GE.Eth(i)) THEN
-          k(i) = dsqrt(2d0*mu*(EE)-Eth(i)) ! k is real
+          k(i) = dsqrt(2d0*mu*(EE-Eth(i))) ! k is real
           no=no+1
        ELSE
           k(i) = dsqrt(2d0*mu*(Eth(i)-EE)) ! k->kappa, kappa is real
@@ -364,15 +364,11 @@ CONTAINS
 
     DO i = 1,no
       Identity(i,i) = 1d0
-       CALL hyperrjry(INT(d),alpha,BPD%lam(i),k(i)*rm,rhypj,rhypy,rhypjp,rhypyp)
-       ! s(i) = dsqrt(mu)*rhypj  ! the factor of sqrt(mu) is for energy normalization
-       ! c(i) = -dsqrt(mu)*rhypy ! the factor of sqrt(mu) is for energy normalization
-       ! sp(i) = k(i)*dsqrt(mu)*rhypjp
-       ! cp(i) = -k(i)*dsqrt(mu)*rhypyp
-       s(i) = 1d0/dsqrt(Pi*k(i))*rhypj  ! the factor of sqrt(mu) is for energy normalization
-       c(i) = -1d0/dsqrt(Pi*k(i))*rhypy ! the factor of sqrt(mu) is for energy normalization
-       sp(i) = k(i)*1d0/dsqrt(Pi*k(i))*rhypjp
-       cp(i) = -k(i)*1d0/dsqrt(Pi*k(i))*rhypyp
+      CALL hyperrjry(INT(d),alpha,BPD%lam(i),k(i)*rm,rhypj,rhypy,rhypjp,rhypyp)
+      s(i) = rhypj/dsqrt(Pi*k(i))
+      c(i) = -rhypy/dsqrt(Pi*k(i))
+      sp(i) = dsqrt(k(i)/Pi)*rhypjp
+      cp(i) = -dsqrt(k(i)/Pi)*rhypyp
     ENDDO
     Imat=0d0
     Jmat=0d0
