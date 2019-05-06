@@ -773,35 +773,6 @@ SUBROUTINE BoxMatch(BA, BB, BPD, EIG, dim, alphafact)
   DEALLOCATE(tempnorm)
   DEALLOCATE(ZT)
 END SUBROUTINE BoxMatch
-
-!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-!use this routine to test if the potential is right.  Looks ok!
-SUBROUTINE POTLMX(NCHAN,R,V)
-  USE BalujaParameters
-  IMPLICIT NONE
-  INTEGER I,J,NCHAN,NMX,LAMAX,K,ION,LCHL(3),EL2
-  DOUBLE PRECISION V(NCHAN,NCHAN),R,VP,RR
-  LAMAX=2
-  ION=1
-  NMX=3
-  NCHAN=3
-
-  !C      SETS UP EXAMPLE POTENTIAL FOR USE IN RPROP
-
-  DO I=1,NCHAN
-     EL2 = lmom(I)*(lmom(I)+1)
-     DO J=1,NCHAN
-        VP = 0.
-        RR = 1.D0/R
-        IF(I.EQ.J) VP=-2.D0*DFLOAT(ION)*RR+EL2*RR*RR + BalujaEth(I)
-        DO K=1,LAMAX
-           VP = VP+BalujaMCmat(I,J,K)*RR**(K+1)
-        ENDDO
-        V(I,J) = 0.5d0*VP
-     ENDDO
-  ENDDO
-
-END SUBROUTINE POTLMX
 !****************************************************************************************************
 SUBROUTINE checkbessel(xmin,xmax,npts,lam,d,file)
   IMPLICIT NONE
