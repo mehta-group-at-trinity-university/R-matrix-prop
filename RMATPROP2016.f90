@@ -2,13 +2,13 @@
 MODULE GlobalVars
   IMPLICIT NONE
   INTEGER NumParticles, NumChannels,  NumAllChan, Order, NumE
-  INTEGER StartBC, EndBC, xTotNumPoints, xNumPoints1, NumBoxes,lmax
+  INTEGER StartBC, EndBC, xNumPoints, xNumPoints1, NumBoxes,lmax
   !----------------------------------------------------------------------------------------------------
   DOUBLE PRECISION AlphaFactor ! This is the parameter that appears in the reduced wavefunction u(R) = R^(AlphaFactor) Psi(R)
   ! Typical choice is either AlphaFactor = 0 (reduced wavefunction = wavefunction), or AlphaFactor = (EffDim - 1)/2 (eliminates 1st derivative terms from KE)
   !----------------------------------------------------------------------------------------------------
   DOUBLE PRECISION reducedmass, xStart, xEnd, energy,kStart,kEnd
-  DOUBLE PRECISION SpatialDim, EffDim
+  DOUBLE PRECISION SpatialDim, EffDim, Emin, Emax
   DOUBLE PRECISION, ALLOCATABLE :: mass(:)
   CHARACTER*64 InputFile
   COMPLEX*16 II
@@ -29,13 +29,13 @@ CONTAINS
     READ(7,*) (mass(n), n=1,NumParticles)
     READ(7,*)
     READ(7,*)
-    READ(7,*) xStart, xEnd, xTotNumPoints, xNumPoints1, LegPoints, NumE
+    READ(7,*) xStart, xEnd, xNumPoints, xNumPoints1, LegPoints
     READ(7,*)
     READ(7,*)
     READ(7,*) NumBoxes, StartBC, EndBC, kStart, kEnd
     READ(7,*)
     READ(7,*)
-    READ(7,*) Energy
+    READ(7,*) Emin,  Emax,  NumE
 
     lmax = 2*NumChannels
     CLOSE(unit=7)
@@ -226,37 +226,37 @@ CONTAINS
 END MODULE Scattering
 
 !****************************************************************************************************
-SUBROUTINE makeEgrid(Egrid,NumE,E1,E2,scale)
-  implicit none
-  DOUBLE PRECISION Egrid(NumE)
-  DOUBLE PRECISION E1,E2,LE1,LE2,DE,LDE
-  INTEGER NumE, iE
-  CHARACTER(LEN=*), INTENT(IN) :: scale
-  !--------------------------------------------
-  ! Linear grid:
-  !--------------------------------------------
-  Egrid(1)=E1
-  IF((scale.EQ."linear").and.(NumE.gt.1)) THEN
-     DE=(E2-E1)/DBLE(NumE-1)
-     DO iE=1,NumE
-        Egrid(iE) = E1 + (iE-1)*DE
-     ENDDO
-  ENDIF
-  !--------------------------------------------
-  ! Log grid:
-  !--------------------------------------------
-  IF((scale.EQ."log").and.(NumE.gt.1)) THEN
-     LE1=dlog(E1)
-     LE2=dlog(E2)
-
-     LDE=(LE2-LE1)/DBLE(NumE-1d0)
-     DO iE=1,NumE
-        Egrid(iE) = dexp(LE1 + (iE-1)*LDE)
-!        write(6,*) LE1, LE2, LDE, Egrid(iE)
-     ENDDO
-  ENDIF
-
-END SUBROUTINE makeEgrid
+! SUBROUTINE makeEgrid(Egrid,NumE,E1,E2,scale)
+!   implicit none
+!   DOUBLE PRECISION Egrid(NumE)
+!   DOUBLE PRECISION E1,E2,LE1,LE2,DE,LDE
+!   INTEGER NumE, iE
+!   CHARACTER(LEN=*), INTENT(IN) :: scale
+!   !--------------------------------------------
+!   ! Linear grid:
+!   !--------------------------------------------
+!   Egrid(1)=E1
+!   IF((scale.EQ."linear").and.(NumE.gt.1)) THEN
+!      DE=(E2-E1)/DBLE(NumE-1)
+!      DO iE=1,NumE
+!         Egrid(iE) = E1 + (iE-1)*DE
+!      ENDDO
+!   ENDIF
+!   !--------------------------------------------
+!   ! Log grid:
+!   !--------------------------------------------
+!   IF((scale.EQ."log").and.(NumE.gt.1)) THEN
+!      LE1=dlog(E1)
+!      LE2=dlog(E2)
+!
+!      LDE=(LE2-LE1)/DBLE(NumE-1d0)
+!      DO iE=1,NumE
+!         Egrid(iE) = dexp(LE1 + (iE-1)*LDE)
+! !        write(6,*) LE1, LE2, LDE, Egrid(iE)
+!      ENDDO
+!   ENDIF
+!
+! END SUBROUTINE makeEgrid
 !*********************************************************************************
 SUBROUTINE GridMaker(grid,numpts,E1,E2,scale)
   implicit none
@@ -336,14 +336,15 @@ PROGRAM main
   ! allocate the data for the Boxes
   !---------------------------------------------------------------------
   Allocate(BoxGrid(NumBoxes+1))
-
-  xDelt=(xEnd-xStart)/DBLE(NumBoxes-1)
+  call GridMaker(BoxGrid,NumBoxes+1,xStart,xEnd,"log")
+  call printmatrix(BoxGrid,1,NumBoxes+1,6)
+  !xDelt=(xEnd-xStart)/DBLE(NumBoxes-1)
   ALLOCATE(Boxes(NumBoxes))
   Boxes(1)%NumOpenL = 0
   Boxes(1)%NumOpenR = NumChannels
   Boxes(1)%betaMax = Boxes(1)%NumOpenL + Boxes(1)%NumOpenR
-  Boxes(1)%xl=xStart
-  Boxes(1)%xr=10d0!xDelt
+  Boxes(1)%xl=BoxGrid(1) !xStart
+  Boxes(1)%xr=BoxGrid(2) !10d0!xDelt
   CALL AllocateBox(Boxes(1))
   CALL InitZeroBox(Boxes(1))
   !WRITE(6,*) "Box",1,Boxes(1)%xl,Boxes(1)%xr
@@ -352,8 +353,8 @@ PROGRAM main
      Boxes(i)%NumOpenL = NumChannels
      Boxes(i)%NumOpenR = NumChannels
      Boxes(i)%betaMax = Boxes(1)%NumOpenL + Boxes(1)%NumOpenR
-     Boxes(i)%xl=Boxes(i-1)%xr
-     Boxes(i)%xr=Boxes(i-1)%xr+xDelt
+     Boxes(i)%xl=BoxGrid(i)!Boxes(i-1)%xr
+     Boxes(i)%xr=BoxGrid(i+1)!Boxes(i-1)%xr+xDelt
      CALL AllocateBox(Boxes(i))
      CALL InitZeroBox(Boxes(i))
      !WRITE(6,*) "Box",i,Boxes(i)%xl,Boxes(i)%xr
@@ -376,7 +377,7 @@ PROGRAM main
   BPD1%Order = Order
   BPD1%Left = 0
   BPD1%Right = 2
-  BPD1%xNumPoints = 40!xTotNumPoints
+  BPD1%xNumPoints = xNumPoints1
   BPD1%kl = kStart ! only relevant for Left = 3. This is the normal log-derivative at BPD%xl
   BPD1%kr = kEnd   ! only relevant for Right = 3. This is the normal log-derivative at BPD%xr
 
@@ -388,7 +389,7 @@ PROGRAM main
   BPD0%Order = Order
   BPD0%Left = 2
   BPD0%Right = 2
-  BPD0%xNumPoints = xTotNumPoints
+  BPD0%xNumPoints = xNumPoints
   BPD0%kl = kStart ! only relevant for Left = 3. This is the normal log-derivative at BPD%xl
   BPD0%kr = kEnd ! only relevant for Right = 3. This is the normal log-derivative at BPD%xr
 
@@ -415,7 +416,7 @@ PROGRAM main
   !---------------------------------------------------------------------
   ! Make and fill the arrays for the primitive set
   !---------------------------------------------------------------------
-  ALLOCATE(xprim(xTotNumPoints))
+  ALLOCATE(xprim(xNumPoints))
   !CALL GridMakerLinear(BPD0%xNumPoints,0d0,1d0,xprim)
   CALL GridMaker(xprim,BPD0%xNumPoints,0d0,1d0,"linear")
   BPD0%xPoints=xprim
@@ -431,7 +432,7 @@ PROGRAM main
 
   !CALL makeEgrid(Egrid,NumE,M%Eth(2)+0.01d0,M%Eth(3)-0.01d0,"linear")
     !CALL makeEgrid(Egrid,NumE,1d-1,1d1,"log")
-  CALL GridMaker(Egrid,NumE,1d-1,1d1,"log")
+  CALL GridMaker(Egrid,NumE,Emin,Emax,"log")
 
   ! Fill the arrays for the potential matrix for the first box
   !CALL SetMorsePotential(BPD1,M)
@@ -511,32 +512,7 @@ SUBROUTINE printmatrix(M,nr,nc,file)
 30 FORMAT(100F12.6)
 END SUBROUTINE printmatrix
 
-!****************************************************************************************************
-! SUBROUTINE GridMakerLinear(xNumPoints,x1,x2,xPoints)
-!   IMPLICIT NONE
-!   INTEGER, INTENT(in) :: xNumPoints
-!   DOUBLE PRECISION, INTENT(in) :: x1,x2
-!   DOUBLE PRECISION, INTENT(out) :: xPoints(xNumPoints)
-!   INTEGER i
-!   DOUBLE PRECISION xDelt
-!   xDelt = (x2-x1)/DBLE(xNumPoints-1)
-!   DO i = 1,xNumPoints
-!      xPoints(i) = (i-1)*xDelt + x1 ! Simple linear grid
-!   ENDDO
-! END SUBROUTINE GridMakerLinear
-! !****************************************************************************************************
-! SUBROUTINE GridMakerQuadratic(xNumPoints,x1,x2,xPoints)
-!   IMPLICIT NONE
-!   INTEGER, INTENT(in) :: xNumPoints
-!   DOUBLE PRECISION, INTENT(in) :: x1,x2
-!   DOUBLE PRECISION, INTENT(out) :: xPoints(xNumPoints)
-!   INTEGER i
-!   DOUBLE PRECISION xDelt
-!   DO i = 1,xNumPoints
-!      xPoints(i) = ((i-1)/DBLE(xNumPoints-1))**2*(x2-x1) + x1 ! Simple linear grid
-!   ENDDO
-! END SUBROUTINE GridMakerQuadratic
-!****************************************************************************************************
+!***************************************************************************************************
 SUBROUTINE BoxMatch(BA, BB, BPD, EIG, dim, alphafact)
   USE DataStructures
   IMPLICIT NONE

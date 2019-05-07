@@ -1,17 +1,17 @@
 NumParticles	NumChannels	SpatialDim (double-prec)	NumAllChan	Order
-2		          10		        3.d0	   		            	20	        	5
+2		          5		        3.d0	   		            	20	        	5
 
 mass1		mass2		mass3		mass4
 2.d0		2.d0		-		     -
 
-xMin		xMax		xNumPoints 	xNumPoints1   LegPoints  NumE
-1d-2	  10000d0		10         	10             10         1
+xMin		xMax		xNumPoints 	xNumPoints1   LegPoints
+1d-2	  10000d0		10         	10             10
 
 NumBoxes	Left		Right		kStart		kEnd
 100	        0	     	2   		1d20  		1d20
 
-Energy
-0.5d0
+Emin    Emax    NumE
+1d-2    1d3     10
 
 
 !----------------------------------------------------------------------------------------------------
