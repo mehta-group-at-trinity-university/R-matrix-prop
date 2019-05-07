@@ -1,5 +1,5 @@
 CMP = gfortran
-CMPFLAGS = -ffixed-line-length-132 -O3
+CMPFLAGS = -ffixed-line-length-132 -O3 -fdec
 DEBUG   = -fcheck=all
 FORCEDP = #-fdefault-real-8 -fdefault-double-8
 INCLUDE = -I/usr/local/opt/lapack/include

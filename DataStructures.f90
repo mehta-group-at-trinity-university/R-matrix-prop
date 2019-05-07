@@ -24,10 +24,11 @@ MODULE DataStructures
      !double precision, allocatable :: RF(:,:),K(:,:)
 
   END TYPE BoxData
+  !****************************************************************************************************
   TYPE ScatData
-     DOUBLE PRECISION, ALLOCATABLE :: K(:,:), R(:,:), sigma(:,:)
-     complex*16, ALLOCATABLE :: f(:,:), S(:,:), T(:,:)
 
+    DOUBLE PRECISION, ALLOCATABLE :: K(:,:), R(:,:), sigma(:,:), sigmatot(:)
+    complex*16, ALLOCATABLE :: f(:,:), S(:,:), T(:,:)
   END TYPE ScatData
 
 CONTAINS
@@ -38,6 +39,7 @@ CONTAINS
     INTEGER N
     ALLOCATE(SD%K(N,N),SD%R(N,N),SD%sigma(N,N))
     ALLOCATE(SD%f(N,N),SD%S(N,N),SD%T(N,N))
+    ALLOCATE(SD%sigmatot(-N:N))
     SD%K=0d0
     SD%R=0d0
     SD%f=0d0
@@ -50,7 +52,7 @@ CONTAINS
     IMPLICIT NONE
     TYPE(ScatData) SD
 
-    DEALLOCATE(SD%K,SD%R,SD%f,SD%sigma,SD%S,SD%T)
+    DEALLOCATE(SD%K,SD%R,SD%f,SD%sigma,SD%S,SD%T,SD%sigmatot)
 
   END SUBROUTINE DeAllocateScat
   !****************************************************************************************************

@@ -1,8 +1,8 @@
 !****************************************************************************************************
 MODULE GlobalVars
   IMPLICIT NONE
-  INTEGER NumParticles, NumChannels,  NumAllChan, Order
-  INTEGER StartBC, EndBC, xTotNumPoints, NumBoxes,lmax
+  INTEGER NumParticles, NumChannels,  NumAllChan, Order, NumE
+  INTEGER StartBC, EndBC, xTotNumPoints, xNumPoints1, NumBoxes,lmax
   !----------------------------------------------------------------------------------------------------
   DOUBLE PRECISION AlphaFactor ! This is the parameter that appears in the reduced wavefunction u(R) = R^(AlphaFactor) Psi(R)
   ! Typical choice is either AlphaFactor = 0 (reduced wavefunction = wavefunction), or AlphaFactor = (EffDim - 1)/2 (eliminates 1st derivative terms from KE)
@@ -29,7 +29,7 @@ CONTAINS
     READ(7,*) (mass(n), n=1,NumParticles)
     READ(7,*)
     READ(7,*)
-    READ(7,*) xStart, xEnd, xTotNumPoints, LegPoints
+    READ(7,*) xStart, xEnd, xTotNumPoints, xNumPoints1, LegPoints, NumE
     READ(7,*)
     READ(7,*)
     READ(7,*) NumBoxes, StartBC, EndBC, kStart, kEnd
@@ -204,7 +204,7 @@ CONTAINS
     !call sqrmatinv(B%Zfp,B%NumOpenR)  !This gives the same result as the code segment  executed above
     !SD%R = matmul(B%Zf,B%Zfp)
 
-    !tmp = Identity - II*SD%K
+    tmp = Identity - II*SD%K
     !write(6,*) "Identity matrix:"
     !call printmatrix(Identity,no,no,6)
     !write(6,*) "K matrix:"
@@ -213,10 +213,12 @@ CONTAINS
     !call printmatrix(realpart(tmp),no,no,6)
     !write(6,*) "Imaginary part of 1 - II*K"
     !call printmatrix(aimag(tmp),no,no,6)
-    !SD%S = Identity + II*SD%K
-    !call CompSqrMatInv(tmp,no)
-    !SD%S = MATMUL(SD%S,tmp)
-    !SD%T = -II*0.5d0*(SD%S-Identity)
+    SD%S = Identity + II*SD%K
+    call CompSqrMatInv(tmp,no)
+    SD%S = MATMUL(SD%S,tmp)
+    SD%T = -II*0.5d0*(SD%S-Identity)
+
+    SD%sigma = conjg(SD%T)*SD%T*Pi/(2d0*mu*EE)
 
     DEALLOCATE(s,c,Imat,Jmat,sp,cp)
   END SUBROUTINE CalcK
@@ -225,14 +227,16 @@ END MODULE Scattering
 
 !****************************************************************************************************
 SUBROUTINE makeEgrid(Egrid,NumE,E1,E2,scale)
+  implicit none
   DOUBLE PRECISION Egrid(NumE)
-  DOUBLE PRECISION E1,E2,LE1,LE2,DE,DLE
+  DOUBLE PRECISION E1,E2,LE1,LE2,DE,LDE
   INTEGER NumE, iE
   CHARACTER(LEN=*), INTENT(IN) :: scale
   !--------------------------------------------
   ! Linear grid:
   !--------------------------------------------
-  IF(scale.EQ."linear") THEN
+  Egrid(1)=E1
+  IF((scale.EQ."linear").and.(NumE.gt.1)) THEN
      DE=(E2-E1)/DBLE(NumE-1)
      DO iE=1,NumE
         Egrid(iE) = E1 + (iE-1)*DE
@@ -241,16 +245,58 @@ SUBROUTINE makeEgrid(Egrid,NumE,E1,E2,scale)
   !--------------------------------------------
   ! Log grid:
   !--------------------------------------------
-  IF(scale.EQ."log") THEN
+  IF((scale.EQ."log").and.(NumE.gt.1)) THEN
      LE1=dlog(E1)
      LE2=dlog(E2)
-     LDE=(LE2-LE1)/DBLE(NumE-1)
+
+     LDE=(LE2-LE1)/DBLE(NumE-1d0)
      DO iE=1,NumE
         Egrid(iE) = dexp(LE1 + (iE-1)*LDE)
+!        write(6,*) LE1, LE2, LDE, Egrid(iE)
      ENDDO
   ENDIF
 
 END SUBROUTINE makeEgrid
+!*********************************************************************************
+SUBROUTINE GridMaker(grid,numpts,E1,E2,scale)
+  implicit none
+  DOUBLE PRECISION grid(numpts)
+  DOUBLE PRECISION E1,E2,LE1,LE2,DE,LDE
+  INTEGER numpts, iE
+  CHARACTER(LEN=*), INTENT(IN) :: scale
+  !--------------------------------------------
+  ! Linear grid:
+  !--------------------------------------------
+  grid(1)=E1
+  IF((scale.EQ."linear").and.(numpts.gt.1)) THEN
+     DE=(E2-E1)/DBLE(numpts-1)
+     DO iE=1,numpts
+        grid(iE) = E1 + (iE-1)*DE
+     ENDDO
+  ENDIF
+  !--------------------------------------------
+  ! Log grid:
+  !--------------------------------------------
+  IF((scale.EQ."log").and.(numpts.gt.1)) THEN
+     LE1=dlog(E1)
+     LE2=dlog(E2)
+
+     LDE=(LE2-LE1)/DBLE(numpts-1d0)
+     DO iE=1,numpts
+        grid(iE) = dexp(LE1 + (iE-1)*LDE)
+!        write(6,*) LE1, LE2, LDE, grid(iE)
+     ENDDO
+  ENDIF
+  !--------------------------------------------
+  ! Quadratic grid:
+  !--------------------------------------------
+  IF((scale.EQ."quadratic").and.(numpts.gt.1)) THEN
+     DE=(E2-E1)
+     DO iE=1,numpts
+        grid(iE) = E1 + ((iE-1)/DBLE(numpts-1))**2*DE
+     ENDDO
+  ENDIF
+END SUBROUTINE GridMaker
 !****************************************************************************************************
 PROGRAM main
   USE DataStructures
@@ -270,10 +316,10 @@ PROGRAM main
   TYPE(Morse) :: M
   TYPE(DPData) :: DP
   DOUBLE PRECISION, ALLOCATABLE :: evec(:,:), eval(:)!, temp0(:,:)
-  DOUBLE PRECISION, ALLOCATABLE :: Egrid(:), xprim(:)
+  DOUBLE PRECISION, ALLOCATABLE :: Egrid(:), xprim(:), BoxGrid(:)
 
-  DOUBLE PRECISION xDelt
-  INTEGER NumE, iE, beta, i, iBox,lx,kx
+  DOUBLE PRECISION xDelt,sigmagrandtotal
+  INTEGER  iE, beta, i, iBox,lx,kx,ml
 
   !----------------------------------------------------------------------
   ! Read information from the input file
@@ -289,17 +335,19 @@ PROGRAM main
   !---------------------------------------------------------------------
   ! allocate the data for the Boxes
   !---------------------------------------------------------------------
-  xDelt=(xEnd-xStart)/DBLE(NumBoxes)
+  Allocate(BoxGrid(NumBoxes+1))
+
+  xDelt=(xEnd-xStart)/DBLE(NumBoxes-1)
   ALLOCATE(Boxes(NumBoxes))
   Boxes(1)%NumOpenL = 0
   Boxes(1)%NumOpenR = NumChannels
   Boxes(1)%betaMax = Boxes(1)%NumOpenL + Boxes(1)%NumOpenR
   Boxes(1)%xl=xStart
-  Boxes(1)%xr=xDelt
+  Boxes(1)%xr=10d0!xDelt
   CALL AllocateBox(Boxes(1))
   CALL InitZeroBox(Boxes(1))
-  WRITE(6,*) "Box",1,Boxes(1)%xl,Boxes(1)%xr
-  CALL printmatrix(Boxes(1)%Zf,Boxes(1)%NumOpenR,Boxes(1)%NumOpenR,6)
+  !WRITE(6,*) "Box",1,Boxes(1)%xl,Boxes(1)%xr
+  !CALL printmatrix(Boxes(1)%Zf,Boxes(1)%NumOpenR,Boxes(1)%NumOpenR,6)
   DO i = 2,NumBoxes
      Boxes(i)%NumOpenL = NumChannels
      Boxes(i)%NumOpenR = NumChannels
@@ -308,12 +356,12 @@ PROGRAM main
      Boxes(i)%xr=Boxes(i-1)%xr+xDelt
      CALL AllocateBox(Boxes(i))
      CALL InitZeroBox(Boxes(i))
-     WRITE(6,*) "Box",i,Boxes(i)%xl,Boxes(i)%xr
-     CALL printmatrix(Boxes(i)%Zf,Boxes(i)%NumOpenR,Boxes(i)%NumOpenR,6)
+     !WRITE(6,*) "Box",i,Boxes(i)%xl,Boxes(i)%xr
+     !CALL printmatrix(Boxes(i)%Zf,Boxes(i)%NumOpenR,Boxes(i)%NumOpenR,6)
   ENDDO
 
   DP%lmax=lmax
-  CALL AllocateDP(DP)
+  CALL AllocateDP(DP,NumChannels)
 
   CALL MakeDipoleDipoleCouplingMatrix(DP)
 !  WRITE(6,*) "cllp for m=0:"
@@ -328,7 +376,7 @@ PROGRAM main
   BPD1%Order = Order
   BPD1%Left = 0
   BPD1%Right = 2
-  BPD1%xNumPoints = xTotNumPoints
+  BPD1%xNumPoints = 40!xTotNumPoints
   BPD1%kl = kStart ! only relevant for Left = 3. This is the normal log-derivative at BPD%xl
   BPD1%kr = kEnd   ! only relevant for Right = 3. This is the normal log-derivative at BPD%xr
 
@@ -359,28 +407,38 @@ PROGRAM main
   !---------------------------------------------------------------------
   BPD1%xl=Boxes(1)%xl
   BPD1%xr=Boxes(1)%xr
-  CALL GridMakerLinear(BPD1%xNumPoints,BPD1%xl,BPD1%xr,BPD1%xPoints)
+  !CALL GridMakerLinear(BPD1%xNumPoints,BPD1%xl,BPD1%xr,BPD1%xPoints)
+    !CALL GridMakerQuadratic(BPD1%xNumPoints,BPD1%xl,BPD1%xr,BPD1%xPoints)
+  CALL GridMaker(BPD1%xPoints,BPD1%xNumPoints,BPD1%xl,BPD1%xr,"linear")
   CALL Makebasis(BPD1)
 
   !---------------------------------------------------------------------
   ! Make and fill the arrays for the primitive set
   !---------------------------------------------------------------------
   ALLOCATE(xprim(xTotNumPoints))
-  CALL GridMakerLinear(BPD0%xNumPoints,0d0,1d0,xprim)
+  !CALL GridMakerLinear(BPD0%xNumPoints,0d0,1d0,xprim)
+  CALL GridMaker(xprim,BPD0%xNumPoints,0d0,1d0,"linear")
   BPD0%xPoints=xprim
   CALL MakeBasis(BPD0)
   !Copy over the primitive set to the workhose set
   BPD=BPD0
   ! Initialize the potential data
-  CALL InitMorse(M)
+  !CALL InitMorse(M)
 
   ! make the energy grid
-  NumE=2000
+  !NumE=20  ! now read in from input file
   ALLOCATE(Egrid(NumE))
-  CALL makeEgrid(Egrid,NumE,M%Eth(2)+0.01d0,M%Eth(3)-0.01d0,"linear")
+
+  !CALL makeEgrid(Egrid,NumE,M%Eth(2)+0.01d0,M%Eth(3)-0.01d0,"linear")
+    !CALL makeEgrid(Egrid,NumE,1d-1,1d1,"log")
+  CALL GridMaker(Egrid,NumE,1d-1,1d1,"log")
 
   ! Fill the arrays for the potential matrix for the first box
-  CALL SetMorsePotential(BPD1,M)
+  !CALL SetMorsePotential(BPD1,M)
+
+  DP%even = .true.
+  DP%ml = 0
+
 
   ! Allocate memory for the eigenvalue problem
   EIG1%MatrixDim=BPD1%MatrixDim
@@ -393,35 +451,48 @@ PROGRAM main
 
   ! Allocate memory for the scattering data
   CALL AllocateScat(SD,Boxes(NumBoxes)%NumOpenR)
+  !open (unit=6, carriagecontrol='fortran')
 
   DO iE = 1, NumE
-     Energy = Egrid(iE)
-     iBox = 1
-     CALL CalcGamLam(BPD1,EIG1)
-     CALL Mydggev(EIG1%MatrixDim,EIG1%Gam,EIG1%MatrixDim,EIG1%Lam,EIG1%MatrixDim,EIG1%eval,EIG1%evec)
-     CALL BoxMatch(Bnull, Boxes(iBox), BPD1, EIG1, EffDim, AlphaFactor)
-     CALL CalcK(Boxes(iBox),BPD1,SD,reducedmass,EffDim,AlphaFactor,Egrid(iE),M%Eth)
-     DO iBox = 2, NumBoxes
+    do ml=0,BPD%NumChannels
+      DP%ml=ml
+      Energy = Egrid(iE)
+      call progress(ml)
+      iBox = 1
+      call SetDipoleDipolePot(BPD1,DP)
+      call checkpot(BPD1,101)
+      CALL CalcGamLam(BPD1,EIG1)
+      CALL Mydggev(EIG1%MatrixDim,EIG1%Gam,EIG1%MatrixDim,EIG1%Lam,EIG1%MatrixDim,EIG1%eval,EIG1%evec)
+      CALL BoxMatch(Bnull, Boxes(iBox), BPD1, EIG1, EffDim, AlphaFactor)
+      CALL CalcK(Boxes(iBox),BPD1,SD,reducedmass,EffDim,AlphaFactor,Egrid(iE),DP%Eth)
+      DO iBox = 2, NumBoxes
         !BPD=BPD0  ! recall the stored BPD0 into BPD in case some things are being rewritten
         BPD%xl=Boxes(iBox)%xl
         BPD%xr=Boxes(iBox)%xr
         BPD%xPoints = BPD%xl + (BPD%xr-BPD%xl)*xprim
         DO kx = 1,BPD%xNumPoints
-           DO lx = 1,LegPoints
-              BPD%ux(lx,kx,1:BPD%xDim) = BPD0%ux(lx,kx,1:BPD%xDim)/(BPD%xr-BPD%xl)
-           ENDDO
+          DO lx = 1,LegPoints
+            BPD%ux(lx,kx,1:BPD%xDim) = BPD0%ux(lx,kx,1:BPD%xDim)/(BPD%xr-BPD%xl)
+          ENDDO
         ENDDO
-        CALL SetMorsePotential(BPD,M)  ! would like to change this so we don't have to do it for each energy.
+        !CALL SetMorsePotential(BPD,M)  ! would like to change this so we don't have to do it for each energy.
+        call SetDipoleDipolePot(BPD,DP)
         CALL CalcGamLam(BPD,EIG)
         CALL Mydggev(EIG%MatrixDim,EIG%Gam,EIG%MatrixDim,EIG%Lam,EIG%MatrixDim,EIG%eval,EIG%evec)
         CALL BoxMatch(Boxes(iBox-1), Boxes(iBox), BPD, EIG, EffDim, AlphaFactor)
-        SD%K=0d0
-        CALL CalcK(Boxes(iBox),BPD,SD,reducedmass,EffDim,AlphaFactor,Egrid(iE),M%Eth)
-     ENDDO
-     !WRITE(6,*) Energy, SD%sigma(1,1), SD%sigma(1,2), SD%sigma(2,1), SD%sigma(2,2)
-     WRITE(6,*)  "K-matrix:"
-     call printmatrix(SD%K,2,2,6)
-     WRITE(10,*) Energy, SD%K
+
+
+      ENDDO
+      !WRITE(6,*) Energy, SD%sigma(1,1), SD%sigma(1,2), SD%sigma(2,1), SD%sigma(2,2)
+      !CALL CalcK(Boxes(NumBoxes),BPD,SD,reducedmass,EffDim,AlphaFactor,Egrid(iE),DP%Eth)
+
+      !     WRITE(6,*) "============================="
+      !     call printmatrix(SD%K,NumChannels,NumChannels,6)
+      SD%sigmatot(DP%ml) = sum(SD%sigma)
+    enddo
+    sigmagrandtotal=SD%sigmatot(0)+2*sum(SD%sigmatot(1:BPD%NumChannels))
+    write(10,*) Energy, sigmagrandtotal
+    WRITE(6,*)  "sigmatot for energy", Energy, sigmagrandtotal
   ENDDO
 
 20 FORMAT(1P,100e14.8)
@@ -439,19 +510,32 @@ SUBROUTINE printmatrix(M,nr,nc,file)
 20 FORMAT(1P,100D20.12)
 30 FORMAT(100F12.6)
 END SUBROUTINE printmatrix
+
 !****************************************************************************************************
-SUBROUTINE GridMakerLinear(xNumPoints,x1,x2,xPoints)
-  IMPLICIT NONE
-  INTEGER, INTENT(in) :: xNumPoints
-  DOUBLE PRECISION, INTENT(in) :: x1,x2
-  DOUBLE PRECISION, INTENT(out) :: xPoints(xNumPoints)
-  INTEGER i
-  DOUBLE PRECISION xDelt
-  xDelt = (x2-x1)/DBLE(xNumPoints-1)
-  DO i = 1,xNumPoints
-     xPoints(i) = (i-1)*xDelt + x1 ! Simple linear grid
-  ENDDO
-END SUBROUTINE GridMakerLinear
+! SUBROUTINE GridMakerLinear(xNumPoints,x1,x2,xPoints)
+!   IMPLICIT NONE
+!   INTEGER, INTENT(in) :: xNumPoints
+!   DOUBLE PRECISION, INTENT(in) :: x1,x2
+!   DOUBLE PRECISION, INTENT(out) :: xPoints(xNumPoints)
+!   INTEGER i
+!   DOUBLE PRECISION xDelt
+!   xDelt = (x2-x1)/DBLE(xNumPoints-1)
+!   DO i = 1,xNumPoints
+!      xPoints(i) = (i-1)*xDelt + x1 ! Simple linear grid
+!   ENDDO
+! END SUBROUTINE GridMakerLinear
+! !****************************************************************************************************
+! SUBROUTINE GridMakerQuadratic(xNumPoints,x1,x2,xPoints)
+!   IMPLICIT NONE
+!   INTEGER, INTENT(in) :: xNumPoints
+!   DOUBLE PRECISION, INTENT(in) :: x1,x2
+!   DOUBLE PRECISION, INTENT(out) :: xPoints(xNumPoints)
+!   INTEGER i
+!   DOUBLE PRECISION xDelt
+!   DO i = 1,xNumPoints
+!      xPoints(i) = ((i-1)/DBLE(xNumPoints-1))**2*(x2-x1) + x1 ! Simple linear grid
+!   ENDDO
+! END SUBROUTINE GridMakerQuadratic
 !****************************************************************************************************
 SUBROUTINE BoxMatch(BA, BB, BPD, EIG, dim, alphafact)
   USE DataStructures
@@ -554,7 +638,7 @@ SUBROUTINE BoxMatch(BA, BB, BPD, EIG, dim, alphafact)
   j=1
   DO i = 1,BB%NumOpenL+BB%betaMax
      absd=ABS(Dval(i))
-     IF((absd.GE.1d-12).AND.(absd.LT.1d12)) THEN
+     IF((absd.GE.1d-10).AND.(absd.LT.1d10)) THEN
         Dikeep(j)=i
         BB%bf(j)=Dval(i)
         j=j+1
@@ -651,3 +735,15 @@ SUBROUTINE testCG
   WRITE(6,*) J1D, J2D, JD, M1D, M2D, MD, CG
 END SUBROUTINE testCG
 !****************************************************************************************************
+subroutine progress(j)
+  implicit none
+  integer(kind=4)::j,k
+  character(len=17)::bar="???% |          |"
+  write(unit=bar(1:3),fmt="(i3)") 10*j
+  do k=1, j
+    bar(6+k:6+k)="*"
+  enddo
+  ! print the progress bar.
+  write(unit=6,fmt="(a1,a1,a17)",advance="no") '+',char(13), bar
+  return
+end subroutine progress
