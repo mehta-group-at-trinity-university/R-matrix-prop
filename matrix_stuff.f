@@ -41,7 +41,7 @@
       integer LDG,N,LDL,info
       double precision G(LDG,N),L(LDL,N),eval(N),evec(N,N),GL(LDG,N),LL(LDL,N)
       double precision, allocatable :: alphar(:),alphai(:),beta(:),work(:),VL(:,:)
-      integer lwork,i,im,in,j
+      integer lwork,i,im,in,ig,jg
 
       allocate(alphar(N),alphai(N),beta(N))
       GL=G
@@ -65,10 +65,17 @@
       call dggev('N','V',N,GL,LDG,LL,LDL,alphar,alphai,beta,VL,1,evec,N,work,lwork,info)
 
       do i = 1, N
-      if (abs(alphai(i)).ge.1d-15) then
-         print*, '#eigenvalue may be complex! alphai(',i,')=',alphai(i)
+      if (abs(alphai(i)).ge.1d-14) then
+        print*, '#eigenvalue may be complex! alphai(',i,')=',alphai(i)
+          do ig=1,N
+           do jg=1,ig
+             if (G(ig,jg).ne.G(jg,ig)) then
+               write(6,*) "elements not symmetric:",ig,jg, "diff = ",G(ig,jg)-G(jg,ig)
+             endif
+           enddo
+         enddo
       endif
-      if(abs(beta(i)).ge.1d-15) then
+      if(abs(beta(i)).ge.1d-14) then
          eval(i) = alphar(i)/beta(i)
       endif
       enddo

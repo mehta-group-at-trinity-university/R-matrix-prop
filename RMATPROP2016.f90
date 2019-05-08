@@ -336,8 +336,8 @@ PROGRAM main
   ! allocate the data for the Boxes
   !---------------------------------------------------------------------
   Allocate(BoxGrid(NumBoxes+1))
-  call GridMaker(BoxGrid,NumBoxes+1,xStart,xEnd,"log")
-  call printmatrix(BoxGrid,1,NumBoxes+1,6)
+  call GridMaker(BoxGrid,NumBoxes+1,xStart,xEnd,"quadratic")
+  call printmatrix(BoxGrid,NumBoxes+1,1,6)
   !xDelt=(xEnd-xStart)/DBLE(NumBoxes-1)
   ALLOCATE(Boxes(NumBoxes))
   Boxes(1)%NumOpenL = 0
