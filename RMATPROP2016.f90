@@ -1,4 +1,3 @@
-
   !****************************************************************************************************
 MODULE GlobalVars
   IMPLICIT NONE
@@ -7,6 +6,7 @@ MODULE GlobalVars
   !----------------------------------------------------------------------------------------------------
   DOUBLE PRECISION AlphaFactor ! This is the parameter that appears in the reduced wavefunction u(R) = R^(AlphaFactor) Psi(R)
   ! Typical choice is either AlphaFactor = 0 (reduced wavefunction = wavefunction), or AlphaFactor = (EffDim - 1)/2 (eliminates 1st derivative terms from KE)
+  ! For this calculation, we ALWAYS set AlphaFactor = (EffDim-1)/2 and set StartBC = 0 (Left = 0).
   !----------------------------------------------------------------------------------------------------
   DOUBLE PRECISION reducedmass, xStart, xEnd, energy,kStart,kEnd
   DOUBLE PRECISION SpatialDim, EffDim, Pi
@@ -275,8 +275,12 @@ END MODULE DataStructures
                    ! The KE matrix elements
                    TempG = TempG - a*(BPD%ux(lx,kx,ix)*BPD%ux(lx,kx,ixp))
                    ! The diagonal "overlap"*energy and additional term from reducing the wavefunction
-                   TempG = TempG + a*BPD%u(lx,kx,ix)*2*reducedmass*(Energy - (BPD%Pot(mch,mch,lx,kx) - &
-                        AlphaFactor*(AlphaFactor-EffDim+2)/(2d0*reducedmass*BPD%x(lx,kx)**2)))*BPD%u(lx,kx,ixp)
+!                   TempG = TempG + a*BPD%u(lx,kx,ix)*2*reducedmass*(Energy - (BPD%Pot(mch,mch,lx,kx) - &
+                   !                        AlphaFactor*(AlphaFactor-EffDim+2)/(2d0*reducedmass*BPD%x(lx,kx)**2)))*BPD%u(lx,kx,ixp)
+                   a = a*BPD%u(lx,kx,ix)*BPD%u(lx,kx,ixp)*2d0*reducedmass
+                   TempG = TempG + a*Energy
+                   TempG = TempG - a*BPD%Pot(mch,mch,lx,kx)
+                   TempG = TempG - a*AlphaFactor*(AlphaFactor-EffDim+2d0)/(2d0*reducedmass*BPD%x(lx,kx)**2)                        
                 ENDDO
                 EIG%Gam((mch-1)*BPD%xDim+ix,(mch-1)*BPD%xDim+ixp) = EIG%Gam((mch-1)*BPD%xDim+ix,(mch-1)*BPD%xDim+ixp) + TempG ! place values into Gamma0
              ENDDO
@@ -359,14 +363,14 @@ END MODULE DataStructures
       ALLOCATE(sp(no),cp(no))
       DO i = 1,no
          CALL hyperrjry(INT(d),alpha,BPD%lam(i),k(i)*rm,rhypj,rhypy,rhypjp,rhypyp)
-         ! s(i) = dsqrt(mu)*rhypj  ! the factor of sqrt(mu) is for energy normalization
-         ! c(i) = -dsqrt(mu)*rhypy ! the factor of sqrt(mu) is for energy normalization
-         ! sp(i) = k(i)*dsqrt(mu)*rhypjp
-         ! cp(i) = -k(i)*dsqrt(mu)*rhypyp
-         s(i) = 1d0/dsqrt(Pi*k(i))*rhypj  ! the factor of sqrt(mu) is for energy normalization
-         c(i) = -1d0/dsqrt(Pi*k(i))*rhypy ! the factor of sqrt(mu) is for energy normalization
-         sp(i) = k(i)*1d0/dsqrt(Pi*k(i))*rhypjp
-         cp(i) = -k(i)*1d0/dsqrt(Pi*k(i))*rhypyp
+          s(i) = dsqrt(mu)*rhypj  ! the factor of sqrt(mu) is for energy normalization
+          c(i) = -dsqrt(mu)*rhypy ! the factor of sqrt(mu) is for energy normalization
+          sp(i) = k(i)*dsqrt(mu)*rhypjp
+          cp(i) = -k(i)*dsqrt(mu)*rhypyp
+         !s(i) = 1d0/dsqrt(Pi*k(i))*rhypj  ! the factor of sqrt(mu) is for energy normalization
+         !c(i) = -1d0/dsqrt(Pi*k(i))*rhypy ! the factor of sqrt(mu) is for energy normalization
+         !sp(i) = k(i)*1d0/dsqrt(Pi*k(i))*rhypjp
+         !cp(i) = -k(i)*1d0/dsqrt(Pi*k(i))*rhypyp
 
       ENDDO
       Imat=0d0
@@ -644,7 +648,7 @@ PROGRAM main
   CALL GetGaussFactors(LegendreFile,LegPoints,xLeg,wLeg)
 
 
-!  call checkbessel(0.0001d0,10d0,100,0d0,3,100)
+!  call checkbessel(4990d0,5010d0,1000,0d0,3,100)
 !  stop
   !---------------------------------------------------------------------
   ! allocate the data for the Boxes
@@ -669,11 +673,8 @@ PROGRAM main
     CALL AllocateBox(Boxes(i))
     CALL InitZeroBox(Boxes(i))
     WRITE(6,*) "Box",i,Boxes(i)%xl,Boxes(i)%xr
-    CALL printmatrix(Boxes(i)%Zf,Boxes(i)%NumOpenR,Boxes(i)%NumOpenR,6)
+!    CALL printmatrix(Boxes(i)%Zf,Boxes(i)%NumOpenR,Boxes(i)%NumOpenR,6)
   ENDDO
-
-
-
 
   !-------------------------------------------------------------------
   ! Intitializes some BPD1 variables to the input values.
@@ -681,7 +682,7 @@ PROGRAM main
   !-------------------------------------------------------------------
   BPD1%NumChannels = NumChannels
   BPD1%Order = Order
-  BPD1%Left = 0
+  BPD1%Left = StartBC
   BPD1%Right = 2
   BPD1%xNumPoints = xTotNumPoints
   BPD1%kl = kStart ! only relevant for Left = 3. This is the normal log-derivative at BPD%xl
@@ -730,9 +731,9 @@ PROGRAM main
   CALL InitMorse(M)
 
   ! make the energy grid
-  NumE=2000
+  NumE=500
   ALLOCATE(Egrid(NumE))
-  CALL makeEgrid(Egrid,NumE,M%Eth(2)+0.01d0,M%Eth(3)-0.01d0)
+  CALL makeEgrid(Egrid,NumE,M%Eth(1)+0.01d0,M%Eth(2)-0.01d0)
 
   ! Fill the arrays for the potential matrix for the first box
   CALL SetMorsePotential(BPD1,M)

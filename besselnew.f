@@ -11,22 +11,40 @@ c!
       double precision hypj,hypy,hypjp,hypyp
       double precision rj,rjp, ry, ryp
       double precision order,prefact
+      integer dfact(12)
+      dfact = (/1, 2, 3, 8, 15, 48, 105, 384, 945, 3840, 10395, 46080/)
+      
       halfd=0.5d0*dble(d)
       order = halfd + lam - 1d0
-      call doubfact(d-4,df)
-      !write(6,*) "order=",order, halfd, lam, d
-      call bessjy(x,order,j,y,jp,yp)
+      df=1
+      if((d-4).gt.1) df = dfact(d-4)
+!     call doubfact(d-4,df)
+!     write(6,*) "order=",order, halfd, lam, d
+      if (x.le.5d3) then
+!         write(6,*) "bessjy"
+         call bessjy(x,order,j,y,jp,yp)
+      else
+!         write(6,*) "calling asymptotic form"
+         call BesselAsymNew(order,x,j,y,jp,yp)
+      endif
+!     call bessjy(x,order,j,y,jp,yp)
       prefact = mygamma(halfd-1.d0)*2**(halfd-2d0)/df
       hypj = prefact*j*x**(-halfd+1d0)
       hypy = prefact*y*x**(-halfd+1d0)
       hypjp = prefact*x**(-halfd+1d0)*(jp - (halfd - 1d0)*j/x)
       hypyp = prefact*x**(-halfd+1d0)*(yp - (halfd - 1d0)*y/x)
 
-      rj = x**alpha*hypj
-      rjp = x**alpha*(alpha*hypj/x + hypjp)
-      ry = x**alpha*hypy
-      ryp = x**alpha*(alpha*hypy/x + hypyp)
-
+      if (alpha.ne.0d0) then
+         rj = x**alpha*hypj
+         rjp = x**alpha*(alpha*hypj/x + hypjp)
+         ry = x**alpha*hypy
+         ryp = x**alpha*(alpha*hypy/x + hypyp)
+      else
+         rj = hypj
+         rjp = hypjp
+         ry = hypy
+         ryp = hypyp
+      endif
       end
 !cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 ! This is a subroutine that returns the hyperspherical bessel functions as defined in Avery
@@ -166,14 +184,16 @@ c!
 !     NB:  This is NOT the spherical bessel function kn(x), instead it is x*kn(x),
 !     leaving a factor of sqrt(x) in the numerator of the prefactor to the cylindrical Kn(x).
 !     inu and knu are multiplied by exp(-xscale) and exp(xscale), respectively.
-!     xscale is a constant number that must be chosen at the beginning of a scattering calcualtion.
+!     xscale is a constant number that must be chosen at the beginning of a scattering calculation.
       INTEGER n
       DOUBLE PRECISION si,sip,sk,skp,x,ri,rk,rip,rkp,ldi,ldk,xscale
       DOUBLE PRECISION factor,order,RTPIO2
       double precision RT2OPI,bigk, bigi, bigkp, bigip
       PARAMETER (RTPIO2=1.25331413731550d0)
       PARAMETER (RT2OPI=0.7978845608028654d0)
-      if(n.lt.0.d0.or.x.le.0.d0) write(6,*) 'bad arguments in sphbesik, (n, x) = ', n, x
+      if(n.lt.0.d0.or.x.le.0.d0) then
+         write(6,*) 'bad arguments in sphbesik, (n, x) = ', n, x
+      endif
       order=n+0.5d0
 
 c$$$  call bessik(x,order,ri,rk,rip,rkp)
@@ -198,8 +218,74 @@ c$$$  syp=factor*rkp+sk/(2.d0*x)
       ldk = skp/sk
       return
       END SUBROUTINE Mysphbesik
+      
+!cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+      
+      subroutine BesselAsymNew(v,x,sj,sy,sjp,syp)
+      integer k,b,kstop
+      double precision v,x,sj,sy,sjp,syp,u
+      double precision P,Q,R,S,pi,factor,chi
+      double precision denomP,denomQ,denomP2,denomQ2
+      double precision Pfunction,Qfunction,sign
+      double precision coefR,coefS,factrl
+
+c     asymptotic expansions from Abramowitz and Stegun, pg. 364
+c     following assumes v = n+1/2 where n=0,1,2,......
+
+      pi = dacos(-1.0d0)
+      factor = dsqrt(2.0d0/(pi*x))
+      chi = x - pi*(0.5d0*v + 0.25d0)
+      u = 4.0d0*v*v
+
+      P = 0.0d0
+      R = 0.0d0
+      do k=0,int(v/2.d0-0.25d0)
+         sign = (-1.0d0)**k
+         denomP = (2.0d0*x)**(2*k)
+         denomP2 = factrl(2*k)
+         coefR = (u-1.0d0+16.0d0*dfloat(k*k))/
+     .       (u-(4.0d0*dfloat(k)-1.0d0)*(4.0d0*dfloat(k)-1.0d0))
+         Pfunction = 1.0d0
+         do b=0,4*k-1
+          Pfunction = Pfunction*(v-0.5d0+float(2*k-b))
+         enddo
+      P = P + sign*Pfunction/(denomP*denomP2)
+      R = R + sign*coefR*Pfunction/(denomP*denomP2)
+      enddo
+
+      Q = 0.0d0
+      S = 0.0d0
+      do k=0,int(v/2.d0-0.75d0)
+         sign = (-1.0d0)**k
+         denomQ = denomP*(2.0d0*x)
+         denomQ2 = factrl(2*k+1)
+         coefS = (u+4.0d0*(2.0d0*dfloat(k)+1.0d0)*(2.0d0*dfloat(k)+1.0d0)-
+     .           1.0d0)/(u-(4.0d0*dfloat(k)+1.0d0)*(4.0d0*dfloat(k)+1.0d0))
+         Qfunction = 1.0d0
+         do b=0,4*k+1
+         Qfunction = Qfunction*(v+0.5d0+float(2*k-b))
+         enddo       
+      Q = Q + sign*Qfunction/(denomQ*denomQ2)
+      S = S + sign*coefS*Qfunction/(denomQ*denomQ2)
+      enddo
+
+
+      if (v.eq.0.5d0) then
+         R = 1.d0
+         S = 1.d0/(2.d0*x)
+      endif
+
+      sj = factor*(P*dcos(chi) - Q*dsin(chi)) 
+      sy = factor*(P*dsin(chi) + Q*dcos(chi))
+      sjp=-factor*(R*dsin(chi) - S*dcos(chi))
+      syp= factor*(R*dcos(chi) - S*dsin(chi))
+
+      return
+      end
+
 !cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
       SUBROUTINE bessjy(x,xnu,rj,ry,rjp,ryp)
+      ! From Numerical Recipes (Press et al)
       INTEGER MAXIT
       DOUBLE PRECISION rj,rjp,ry,ryp,x,xnu,XMIN
       DOUBLE PRECISION EPS,FPMIN,PI
@@ -363,6 +449,7 @@ c$$$  syp=factor*rkp+sk/(2.d0*x)
       END SUBROUTINE bessjy
 !cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
       SUBROUTINE beschb(x,gam1,gam2,gampl,gammi)
+! From Numerical Recipes (Press et al)
       INTEGER NUSE1,NUSE2
       DOUBLE PRECISION gam1,gam2,gammi,gampl,x
       PARAMETER (NUSE1=7,NUSE2=8)
@@ -380,6 +467,7 @@ c$$$  syp=factor*rkp+sk/(2.d0*x)
       END SUBROUTINE beschb
 !cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
       FUNCTION chebev(a,b,c,m,x)
+! From Numerical Recipes (Press et al)
       INTEGER m
       DOUBLE PRECISION chebev,a,b,x,c(m)
       INTEGER j
@@ -476,6 +564,7 @@ c$$$  syp=factor*rkp+sk/(2.d0*x)
       end
 !cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
       SUBROUTINE bessik(x,xnu,ri,rk,rip,rkp)
+! From Numerical Recipes (Press et al)
       INTEGER MAXIT
       DOUBLE PRECISION ri,rip,rk,rkp,x,xnu,XMIN
       DOUBLE PRECISION EPS,FPMIN,PI
@@ -508,7 +597,7 @@ CU    USES beschb
          h=del*h
          if(abs(del-1.d0).lt.EPS) goto 1
  11   continue
-      write(6,*)  'x too large in bessik; try asymptotic expansion: x = ', x
+      write(6,*) 'x too large in bessik; try asymptotic expansion: x = ', x
       read(*,*)
  1    continue
       ril=FPMIN
@@ -614,6 +703,7 @@ C  (C) Copr. 1986-92 Numerical Recipes Software v%1jw#<0(9p#3.
 
 
       double precision FUNCTION gammln(xx)
+! From Numerical Recipes (Press et al)
       double precision xx
       INTEGER j
       DOUBLE PRECISION ser,stp,tmp,x,y,cof(6)
@@ -640,3 +730,29 @@ C  (C) Copr. 1986-92 Numerical Recipes Software v%1jw#<0(9p#3.
       double precision gammln, xx
       mygamma = dexp(gammln(xx))
       end
+
+      double precision FUNCTION factrl(n)
+      INTEGER n
+C     USES gammln
+      INTEGER j,ntop
+      double precision a(33),gammln
+      SAVE ntop,a
+      DATA ntop,a(1)/0,1./
+      if (n.lt.0) then
+         write(6,*) "negative factorial in factrl. "
+         write(6,*) "Press enter to continue."
+         read(5,*)
+      else if (n.le.ntop) then
+         factrl=a(n+1)
+      else if (n.le.32) then
+         do 11 j=ntop+1,n
+            a(j+1)=j*a(j)
+11      continue
+        ntop=n
+        factrl=a(n+1)
+      else
+         factrl=exp(gammln(float(n)+1.0d0))
+      endif
+      return
+      END
+      

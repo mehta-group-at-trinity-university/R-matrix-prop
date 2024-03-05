@@ -2,10 +2,9 @@ CMP     = gfortran
 CMPFLAGS = -ffixed-line-length-132 -O3
 DEBUG   = -fcheck=all
 FORCEDP = #-fdefault-real-8 -fdefault-double-8
-INCLUDE = -I/usr/local/opt/lapack/include
+INCLUDE =  -I/opt/lapack/include
 LAPACK =  -framework accelerate
-ARPACK = -L/usr/local/lib/arpack -larpack
-#-L/Users/mehtan/Code/ARPACK/ARPACK -larpack_OSX
+ARPACK =  -I/usr/local/include -L /usr/local/lib/ -larpack
 OBJS  = besselnew.o Bsplines.o matrix_stuff.o RMATPROP2016.o Quadrature.o
 
 RMATPROP2016.x:	   ${OBJS}

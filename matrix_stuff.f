@@ -1,3 +1,4 @@
+! Computes the inverse of a square matrix
       subroutine SqrMatInv(A, N)
       implicit none
       integer N,info,lwk
