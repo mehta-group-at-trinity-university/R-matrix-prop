@@ -57,10 +57,6 @@ PROGRAM main
   INTEGER NumDataPoints, NumOpenChannels, xNumPoints, LegPointsLocal
   INTEGER i, iBox, lx, kx, NumEnergies, ie, nBranch, PhaseFile, KMatFile
   LOGICAL havePrevDelta
-  ! TEMP diagnostic toggle: use the simple, energy-independent Neumann-sum box-1 basis
-  ! (mirroring 2006/2007 adrmatprop.f's Left=1) instead of the Robin/Coulomb-matched one.
-  ! Intended for use with a very small xMin (near the smallest tabulated R).
-  LOGICAL, PARAMETER :: UseNeumannBox1 = .TRUE.
   ! Box-boundary spacing power: 1.0 = linear (uniform box widths), 2.0 = quadratic
   ! (clusters more/narrower boxes near xStart). BoxEdge(i) = xStart + (xEnd-xStart)*(i/NumBoxes)^BoxSpacingPower.
   DOUBLE PRECISION, PARAMETER :: BoxSpacingPower = 1.0d0
@@ -104,6 +100,22 @@ PROGRAM main
   ! for equal-mass three-body systems -- see kLeft_phase_shift_derivation notes).
   ! Threshold here is still the RAW (not yet 2*mu-rescaled) two-body binding
   ! energy B2=-Threshold(i); a = 1/sqrt(2*mu2*B2), mu2=0.5 for two unit masses.
+  !
+  ! *** NOT GENERAL -- delta-function/equal-mass-specific, needs revisiting for any
+  ! other problem: *** this block silently ASSUMES any channel with Threshold<0 is
+  ! this specific kind of genuine Coulomb-diverging bound-pair channel, and applies
+  ! the equal-mass gamma0 formula above unconditionally. A different potential (or
+  ! unequal masses) with a genuine negative-threshold channel that does NOT have
+  ! this particular near-origin -C/R form would get the WRONG CoulombC here, which
+  ! then silently substitutes the wrong near-origin physics via
+  ! AnalyticComboNearOrigin (RMatPropCore.f90) inside SetAdiabaticPotential's
+  ! R<RcutoffAnalytic override (AdiabaticPotential.f90). If porting to a new
+  ! problem: either zero out CoulombC for channels that don't have this exact
+  ! divergence, or replace this whole formula with whatever near-origin physics
+  ! actually applies there. Left as-is here to preserve this file's validated
+  ! delta-function benchmark unchanged (see RMATPROPAdiabatic.inp, DataDir=
+  ! 3bodydata_delta_5ch) -- confirmed to reproduce Amaya-Tapia, Larsen & Popiel
+  ! (Few-Body Systems 23, 87-109, 1997)'s own coupled-channel phase-shift figure.
   ALLOCATE(CoulombC(NumChannels))
   CoulombC = 0d0
   DO i = 1,NumChannels
@@ -161,14 +173,14 @@ PROGRAM main
 
   BPD1%NumChannels = NumChannels
   BPD1%Order = Order
-  ! TEST (per user request): Left=2 (both B1,B2 independently retained at xMin),
-  ! NumOpenL still 0 (Boxes(1)%NumOpenL=0 below) -- letting the ordinary
-  ! CalcGamLam/PartitionAndEliminate elimination mechanism (already exercised for
-  ! every other box's closed channels) handle box 1's boundary instead of the
-  ! specialized BuildBox1CombinedBasis/CalcGamLamBox1 Robin-matched basis. Earlier
-  ! note claimed this is a no-op (basis change within an already-eliminated
-  ! subspace) -- re-verifying now that the near-origin potential/BC pipeline has
-  ! been substantially fixed since that claim was made.
+  ! Left=2 (both B1,B2 independently retained at xMin), NumOpenL still 0
+  ! (Boxes(1)%NumOpenL=0 below): the ordinary CalcGamLam/PartitionAndEliminate
+  ! elimination mechanism (already exercised for every other box's closed
+  ! channels) handles box 1's boundary directly, in place of the earlier
+  ! specialized BuildBox1CombinedBasis/CalcGamLamBox1 Robin-matched basis.
+  ! Confirmed equivalent to that older approach (and to a plain Neumann box-1
+  ! basis) once the near-origin potential/BC pipeline was fixed -- this is now
+  ! the permanent implementation, not a variant under test.
   BPD1%Left = 2
   BPD1%Right = 2
   BPD1%xNumPoints = xNumPoints

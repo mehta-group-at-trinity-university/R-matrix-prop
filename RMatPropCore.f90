@@ -984,10 +984,13 @@ END MODULE DataStructures
   CONTAINS
     SUBROUTINE CalcK(B,BPD,SD,mu,d,alpha,EE,Eth)
       IMPLICIT NONE
-      ! TEMP diagnostic toggle: use order=0 (plain sin/cos, matching legacy
-      ! adrmatprop.f's outer matching for the dimer-threshold channel) instead
-      ! of BPD%lam(i)=Leff in the outer hyperrjry call only -- BuildBox1CombinedBasis's
-      ! own Leff-based near-origin regularity matching is untouched.
+      ! Diagnostic-only switch, left permanently OFF: forcing order=0 (plain sin/cos,
+      ! matching legacy adrmatprop.f's outer matching for the dimer-threshold channel)
+      ! instead of BPD%lam(i)=Leff in the outer hyperrjry call only -- leaving
+      ! BuildBox1CombinedBasis's own Leff-based near-origin regularity matching
+      ! untouched -- was tested and found NOT to affect the phase shift (the real
+      ! bug was the CalcK regular/irregular sign convention below, not this).
+      ! Kept only as a documented negative result; do not re-enable without cause.
       LOGICAL, PARAMETER :: UseOuterOrderZero = .FALSE.
       TYPE(BoxData), INTENT(in) :: B
       TYPE(BPData), INTENT(in) :: BPD
