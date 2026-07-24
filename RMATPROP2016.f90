@@ -1,407 +1,4 @@
   !****************************************************************************************************
-MODULE GlobalVars
-  IMPLICIT NONE
-  INTEGER NumParticles, NumChannels,  NumAllChan, Order
-  INTEGER StartBC, EndBC, xTotNumPoints, NumBoxes
-  !----------------------------------------------------------------------------------------------------
-  DOUBLE PRECISION AlphaFactor ! This is the parameter that appears in the reduced wavefunction u(R) = R^(AlphaFactor) Psi(R)
-  ! Typical choice is either AlphaFactor = 0 (reduced wavefunction = wavefunction), or AlphaFactor = (EffDim - 1)/2 (eliminates 1st derivative terms from KE)
-  ! For this calculation, we ALWAYS set AlphaFactor = (EffDim-1)/2 and set StartBC = 0 (Left = 0).
-  !----------------------------------------------------------------------------------------------------
-  DOUBLE PRECISION reducedmass, xStart, xEnd, energy,kStart,kEnd
-  DOUBLE PRECISION SpatialDim, EffDim, Pi
-  DOUBLE PRECISION, ALLOCATABLE :: mass(:)
-  CHARACTER*64 InputFile
-  COMPLEX*16 II
-  PARAMETER(II=(0.0d0,1.0d0))
-!****************************************************************************************************
-CONTAINS
-  SUBROUTINE ReadGlobal
-    USE Quadrature
-    IMPLICIT NONE
-    INTEGER n
-    ! Be sure to match the format of the input file to the format of the read statements below
-    OPEN(unit=7,file=InputFile(1:INDEX(InputFile,' ')-1),action='read')
-    READ(7,*)
-    READ(7,*) NumParticles, NumChannels, SpatialDim, NumAllChan, Order
-    ALLOCATE(mass(NumParticles))
-    READ(7,*)
-    READ(7,*)
-    READ(7,*) (mass(n), n=1,NumParticles)
-    READ(7,*)
-    READ(7,*)
-    READ(7,*) xStart, xEnd, xTotNumPoints, LegPoints
-    READ(7,*)
-    READ(7,*)
-    READ(7,*) NumBoxes, StartBC, EndBC, kStart, kEnd
-    READ(7,*)
-    READ(7,*)
-    READ(7,*) Energy
-    Pi = dacos(-1d0)
-    CLOSE(unit=7)
-    EffDim = NumParticles*SpatialDim - SpatialDim
-    !AlphaFactor = 0d0
-    AlphaFactor = (EffDim-1d0)/2d0
-
-    IF (NumParticles.EQ.2) THEN
-       reducedmass = mass(1)*mass(2)/(mass(1)+mass(2))
-    ELSE
-       WRITE(6,*) "Reduced mass not set. Must set reduced mass"
-       STOP
-    END IF
-
-
-  END SUBROUTINE ReadGlobal
-  !****************************************************************************************************
-END MODULE GlobalVars
-!****************************************************************************************************
-!****************************************************************************************************
-MODULE DataStructures
-  IMPLICIT NONE
-  !****************************************************************************************************
-  TYPE BPData
-    !This data type contains the array of basis functions and potential matrix
-     INTEGER xNumPoints, xDim, Left, Right, Order, NumChannels, MatrixDim
-     DOUBLE PRECISION, ALLOCATABLE :: u(:,:,:),ux(:,:,:),xPoints(:),x(:,:)
-     DOUBLE PRECISION, ALLOCATABLE :: Pot(:,:,:,:),lam(:)
-     DOUBLE PRECISION kl, kr, xl,xr
-     INTEGER, ALLOCATABLE :: xBounds(:), kxMin(:,:), kxMax(:,:)
-  END TYPE BPData
-  !****************************************************************************************************
-  TYPE GenEigVal
-     INTEGER MatrixDim
-     DOUBLE PRECISION, ALLOCATABLE :: Gam(:,:), Lam(:,:), evec(:,:), eval(:)
-  END TYPE GenEigVal
-  !****************************************************************************************************
-  TYPE BoxData
-     INTEGER NumOpenL, NumOpenR, betaMax
-     DOUBLE PRECISION xL, xR
-     DOUBLE PRECISION, ALLOCATABLE :: Z(:,:), ZP(:,:), NBeta(:), Norm(:,:)
-     DOUBLE PRECISION, ALLOCATABLE :: b(:), bf(:), Zf(:,:), Zfp(:,:)
-     !double precision, allocatable :: RF(:,:),K(:,:)
-
-  END TYPE BoxData
-  TYPE ScatData
-     DOUBLE PRECISION, ALLOCATABLE :: K(:,:), R(:,:), f(:,:), sigma(:,:)
-     COMPLEX*8, ALLOCATABLE :: S(:,:), T(:,:)
-
-  END TYPE ScatData
-
-CONTAINS
-  !****************************************************************************************************
-  SUBROUTINE AllocateScat(SD,N)
-    IMPLICIT NONE
-    TYPE(ScatData) SD
-    INTEGER N
-    ALLOCATE(SD%K(N,N),SD%R(N,N),SD%f(N,N),SD%sigma(N,N))
-    ALLOCATE(SD%S(N,N),SD%T(N,N))
-    SD%K=0d0
-    SD%R=0d0
-    SD%f=0d0
-    SD%sigma=0d0
-    SD%S=(0d0,0d0)
-    SD%T=(0d0,0d0)
-  END SUBROUTINE AllocateScat
-  !****************************************************************************************************
-  SUBROUTINE DeAllocateScat(SD)
-    IMPLICIT NONE
-    TYPE(ScatData) SD
-
-    DEALLOCATE(SD%K,SD%R,SD%f,SD%sigma,SD%S,SD%T)
-
-  END SUBROUTINE DeAllocateScat
-  !****************************************************************************************************
-  SUBROUTINE AllocateEIG(EIG)
-    IMPLICIT NONE
-    TYPE(GenEigVal) :: EIG
-    ALLOCATE(EIG%Gam(EIG%MatrixDim,EIG%MatrixDim),EIG%Lam(EIG%MatrixDim,EIG%MatrixDim))
-    ALLOCATE(EIG%eval(EIG%MatrixDim),EIG%evec(EIG%MatrixDim,EIG%MatrixDim))
-    EIG%Gam=0d0
-    EIG%Lam=0d0
-    EIG%eval=0d0
-    EIG%Evec=0d0
-
-  END SUBROUTINE AllocateEIG
-  !****************************************************************************************************
-  SUBROUTINE DeAllocateEIG(EIG)
-    IMPLICIT NONE
-    TYPE(GenEigVal) :: EIG
-    DEALLOCATE(EIG%Gam,EIG%Lam,EIG%eval,EIG%evec)
-
-  END SUBROUTINE DeAllocateEIG
-  !****************************************************************************************************
-  SUBROUTINE AllocateBox(B)
-    IMPLICIT NONE
-    TYPE(BoxData) :: B
-
-    B%betaMax = B%NumOpenR + B%NumOpenL
-
-    ALLOCATE(B%Z(B%betaMax,B%betaMax),B%ZP(B%betaMax,B%betaMax))
-    ALLOCATE(B%b(B%betaMax))
-    ALLOCATE(B%NBeta(B%betaMax))
-    ALLOCATE(B%Norm(B%betaMax,B%betaMax))
-    ALLOCATE(B%Zf(B%NumOpenR,B%NumOpenR),B%Zfp(B%NumOpenR,B%NumOpenR))
-    ALLOCATE(B%bf(B%NumOpenR))
-
-  END SUBROUTINE AllocateBox
-  !****************************************************************************************************
-  SUBROUTINE InitZeroBox(B)
-    IMPLICIT NONE
-    TYPE(BoxData) :: B
-    B%Z=0d0
-    B%ZP=0d0
-    B%b=0d0
-    B%NBeta=0d0
-    B%Norm=0d0
-    B%Zf=0d0
-    B%Zfp=0d0
-    B%bf=0d0
-
-  END SUBROUTINE InitZeroBox
-  !****************************************************************************************************
-  SUBROUTINE DeAllocateBox(B)
-    IMPLICIT NONE
-    TYPE(BoxData) :: B
-
-    DEALLOCATE(B%Z,B%ZP)
-    DEALLOCATE(B%b)
-    DEALLOCATE(B%NBeta,B%Norm,B%Zf,B%bf,B%Zfp)
-
-
-  END SUBROUTINE DeAllocateBox
-  !****************************************************************************************************
-  SUBROUTINE AllocateBPD(BPD)
-    USE Quadrature
-    IMPLICIT NONE
-    TYPE(BPData) BPD
-    INTEGER xDimMin
-    !Determine the basis dimension for these boundary conditions
-    xDimMin=BPD%xNumPoints+BPD%Order-3
-    BPD%xDim=xDimMin
-    IF (BPD%Left .EQ. 2) BPD%xDim = BPD%xDim + 1
-    IF (BPD%Right .EQ. 2) BPD%xDim = BPD%xDim + 1
-    BPD%MatrixDim = BPD%NumChannels*BPD%xDim
-
-    ALLOCATE(BPD%xPoints(BPD%xNumPoints))
-    ALLOCATE(BPD%xBounds(BPD%xNumPoints + 2*BPD%Order))   ! allocate xBounds before calling CalcBasisFuncs
-    ALLOCATE(BPD%x(LegPoints,BPD%xNumPoints-1))
-
-    ALLOCATE(BPD%u(LegPoints,BPD%xNumPoints,BPD%xDim),BPD%ux(LegPoints,BPD%xNumPoints,BPD%xDim)) ! allocate memory for basis functions
-    ALLOCATE(BPD%kxMin(BPD%xDim,BPD%xDim),BPD%kxMax(BPD%xDim,BPD%xDim)) !
-    ALLOCATE(BPD%Pot(BPD%NumChannels,BPD%NumChannels,LegPoints,BPD%xNumPoints-1))
-
-    ALLOCATE(BPD%lam(BPD%NumChannels))
-
-    BPD%lam=0.d0
-
-  END SUBROUTINE AllocateBPD
-  !****************************************************************************************************
-  SUBROUTINE DeAllocateBPD(BPD)
-    IMPLICIT NONE
-    TYPE(BPData) BPD
-    DEALLOCATE(BPD%xPoints,BPD%xBounds,BPD%x,BPD%u,BPD%ux,BPD%kxMin,BPD%kxMax,BPD%Pot,BPD%lam)
-  END SUBROUTINE DeAllocateBPD
-  !****************************************************************************************************
-  SUBROUTINE MakeBasis(BPD)
-    USE Quadrature
-    IMPLICIT NONE
-
-    TYPE(BPData) BPD
-    INTEGER ix, ixp
-
-    CALL CalcBasisFuncsBP(BPD%Left,BPD%Right,BPD%kl,BPD%kr,BPD%Order,BPD%xPoints,LegPoints,xLeg, &
-         BPD%xDim,BPD%xBounds,BPD%xNumPoints,0,BPD%u)
-    CALL CalcBasisFuncsBP(BPD%Left,BPD%Right,BPD%kl,BPD%kr,BPD%Order,BPD%xPoints,LegPoints,xLeg, &
-         BPD%xDim,BPD%xBounds,BPD%xNumPoints,1,BPD%ux)
-
-    ! Determine the bounds for integration of matrix elements
-    DO ix = 1,BPD%xDim
-       DO ixp = 1,BPD%xDim
-          BPD%kxMin(ixp,ix) = MAX(BPD%xBounds(ix),BPD%xBounds(ixp))
-          BPD%kxMax(ixp,ix) = MIN(BPD%xBounds(ix+BPD%Order+1),BPD%xBounds(ixp+BPD%Order+1))-1 !
-       ENDDO
-    ENDDO
-
-  END SUBROUTINE MakeBasis
-  !****************************************************************************************************
-  SUBROUTINE checkpot(BPD,file)
-    USE Quadrature
-    IMPLICIT NONE
-    INTEGER file,mch,nch,lx,kx
-    TYPE(BPData) BPD
-
-    DO mch = 1,BPD%NumChannels
-       DO nch = 1,mch
-          DO kx = 1, BPD%xNumPoints-1
-             DO lx = 1,LegPoints
-                WRITE(file,*) BPD%x(lx,kx), BPD%Pot(mch,nch,lx,kx)
-             ENDDO
-          ENDDO
-          WRITE(file,*)
-       ENDDO
-       WRITE(file,*)
-    ENDDO
-
-  END SUBROUTINE checkpot
-
-END MODULE DataStructures
-!****************************************************************************************************
-  SUBROUTINE CalcGamLam(BPD,EIG)
-    USE DataStructures
-    USE Quadrature
-    USE GlobalVars
-    IMPLICIT NONE
-    TYPE(BPData), INTENT(in) :: BPD
-    TYPE(GenEigVal) :: EIG
-    INTEGER ix,ixp,lx,kx,mch,nch
-    DOUBLE PRECISION a, ax, bx, xIntScale(BPD%xNumPoints), TempG, xScaledZero
-    EIG%Gam=0d0
-    EIG%Lam=0d0
-    EIG%eval=0d0
-    EIG%evec=0d0
-    !Calculate the Gamma Matrix elements
-    DO ix = 1,BPD%xDim
-       DO ixp = MAX(1,ix-BPD%Order),MIN(BPD%xDim,ix+BPD%Order)
-          DO mch = 1,BPD%NumChannels
-             ! Do the channel-diagonal part first:
-             DO kx = BPD%kxMin(ixp,ix),BPD%kxMax(ixp,ix)
-                ax = BPD%xPoints(kx)
-                bx = BPD%xPoints(kx+1)
-                xIntScale(kx) = 0.5d0*(bx-ax)
-                xScaledZero = 0.5d0*(bx+ax)
-                TempG = 0.0d0
-                DO lx = 1,LegPoints
-                   a = wLeg(lx)*xIntScale(kx)*BPD%x(lx,kx)**(EffDim-1d0-2d0*AlphaFactor)
-                   ! The KE matrix elements
-                   TempG = TempG - a*(BPD%ux(lx,kx,ix)*BPD%ux(lx,kx,ixp))
-                   ! The diagonal "overlap"*energy and additional term from reducing the wavefunction
-!                   TempG = TempG + a*BPD%u(lx,kx,ix)*2*reducedmass*(Energy - (BPD%Pot(mch,mch,lx,kx) - &
-                   !                        AlphaFactor*(AlphaFactor-EffDim+2)/(2d0*reducedmass*BPD%x(lx,kx)**2)))*BPD%u(lx,kx,ixp)
-                   a = a*BPD%u(lx,kx,ix)*BPD%u(lx,kx,ixp)*2d0*reducedmass
-                   TempG = TempG + a*Energy
-                   TempG = TempG - a*BPD%Pot(mch,mch,lx,kx)
-                   TempG = TempG - a*AlphaFactor*(AlphaFactor-EffDim+2d0)/(2d0*reducedmass*BPD%x(lx,kx)**2)                        
-                ENDDO
-                EIG%Gam((mch-1)*BPD%xDim+ix,(mch-1)*BPD%xDim+ixp) = EIG%Gam((mch-1)*BPD%xDim+ix,(mch-1)*BPD%xDim+ixp) + TempG ! place values into Gamma0
-             ENDDO
-
-             ! Now do the off-diagonal parts
-             DO nch = 1, mch-1
-                DO kx = BPD%kxMin(ixp,ix),BPD%kxMax(ixp,ix)
-                   ax = BPD%xPoints(kx)
-                   bx = BPD%xPoints(kx+1)
-                   xIntScale(kx) = 0.5d0*(bx-ax)
-                   xScaledZero = 0.5d0*(bx+ax)
-                   TempG = 0.0d0
-                   DO lx = 1,LegPoints
-                      a = wLeg(lx)*xIntScale(kx)*BPD%x(lx,kx)**(EffDim-1d0-2d0*AlphaFactor)
-                      ! The potential matrix elements calculated here
-                      TempG = TempG - a*BPD%u(lx,kx,ix)*2.0d0*reducedmass*BPD%Pot(mch,nch,lx,kx)*BPD%u(lx,kx,ixp)
-                   ENDDO
-                   EIG%Gam((mch-1)*BPD%xDim+ix,(nch-1)*BPD%xDim+ixp) = EIG%Gam((mch-1)*BPD%xDim +ix, (nch-1)*BPD%xDim +ixp) + TempG ! place values into EIG%Gam
-                ENDDO
-                EIG%Gam((nch-1)*BPD%xDim+ix,(mch-1)*BPD%xDim+ixp) = EIG%Gam((mch-1)*BPD%xDim+ix,(nch-1)*BPD%xDim+ixp)  ! fill in symmetric element mch <--> nch
-             ENDDO
-          ENDDO
-       ENDDO
-    ENDDO
-
-    !Calculate the Lambda matrix elements
-    EIG%Lam = 0.d0
-
-    IF(BPD%Right.EQ.2) THEN
-       DO mch = 1, BPD%NumChannels
-          EIG%Lam( (mch-1)*BPD%xDim + BPD%xDim, (mch-1)*BPD%xDim + BPD%xDim ) = BPD%xr**(EffDim-1d0-2d0*AlphaFactor)
-       ENDDO
-    ENDIF
-    IF(BPD%Left.EQ.2) THEN
-       DO mch = 1, NumChannels
-          EIG%Lam((mch-1)*BPD%xDim + 1,(mch-1)*BPD%xDim + 1) = BPD%xl**(EffDim-1d0-2d0*AlphaFactor)
-       ENDDO
-    ENDIF
-
-  END SUBROUTINE CalcGamLam
-  !****************************************************************************************************
-  MODULE Scattering
-    USE DataStructures
-    USE GlobalVars
-  CONTAINS
-    SUBROUTINE CalcK(B,BPD,SD,mu,d,alpha,EE,Eth)
-      IMPLICIT NONE
-      TYPE(BoxData), INTENT(in) :: B
-      TYPE(BPData), INTENT(in) :: BPD
-      TYPE(ScatData) :: SD
-      DOUBLE PRECISION mu, EE,rm,d,alpha
-      DOUBLE PRECISION, ALLOCATABLE :: s(:),c(:),sp(:),cp(:)
-      DOUBLE PRECISION, ALLOCATABLE :: Imat(:,:),Jmat(:,:)
-      DOUBLE PRECISION rhypj,rhypy,rhypjp,rhypyp
-      DOUBLE PRECISION k(BPD%NumChannels),Eth(BPD%NumChannels)
-      INTEGER i,j,no,nw,nc,beta
-
-      rm=BPD%xr
-      no=0
-      nw=0
-      nc=0
-
-      DO i = 1,BPD%NumChannels
-         IF (EE.GE.Eth(i)) THEN
-            k(i) = dsqrt(2d0*mu*(EE)-Eth(i)) ! k is real
-            no=no+1
-         ELSE
-            k(i) = dsqrt(2d0*mu*(Eth(i)-EE)) ! k->kappa, kappa is real
-            IF( (k(i)*rm).LT.10d0) nw = nw+1
-            IF( (k(i)*rm).GE.10d0) nc = nc+1
-         ENDIF
-      ENDDO
-!      write(6,*) "no = ", no
-      IF((no+nw+nc).NE.BPD%NumChannels) THEN
-         WRITE(6,*) "Channel miscount in calcK"
-         STOP
-      ENDIF
-
-      ALLOCATE(s(no),c(no),Imat(no,no),Jmat(no,no))
-      ALLOCATE(sp(no),cp(no))
-      DO i = 1,no
-         CALL hyperrjry(INT(d),alpha,BPD%lam(i),k(i)*rm,rhypj,rhypy,rhypjp,rhypyp)
-          s(i) = dsqrt(mu)*rhypj  ! the factor of sqrt(mu) is for energy normalization
-          c(i) = -dsqrt(mu)*rhypy ! the factor of sqrt(mu) is for energy normalization
-          sp(i) = k(i)*dsqrt(mu)*rhypjp
-          cp(i) = -k(i)*dsqrt(mu)*rhypyp
-         !s(i) = 1d0/dsqrt(Pi*k(i))*rhypj  ! the factor of sqrt(mu) is for energy normalization
-         !c(i) = -1d0/dsqrt(Pi*k(i))*rhypy ! the factor of sqrt(mu) is for energy normalization
-         !sp(i) = k(i)*1d0/dsqrt(Pi*k(i))*rhypjp
-         !cp(i) = -k(i)*1d0/dsqrt(Pi*k(i))*rhypyp
-
-      ENDDO
-      Imat=0d0
-      Jmat=0d0
-      DO i=1,no
-         DO beta=1,no
-            Imat(i,beta) = (B%Zf(i,beta)*cp(i) - B%Zfp(i,beta)*c(i))/(s(i)*cp(i)-c(i)*sp(i))
-            Jmat(i,beta) = (B%Zf(i,beta)*sp(i) - B%Zfp(i,beta)*s(i))/(c(i)*sp(i)-s(i)*cp(i))
-         ENDDO
-      ENDDO
-      !Jmat=Imat !use this to test if the matrix inverse is working
-      CALL SqrMatInv(Imat, no)
-      SD%K = MATMUL(Jmat,Imat)
-
-      DO i=1,B%NumOpenR
-         DO j=1,B%NumOpenR
-            SD%R(i,j)=0.0d0
-            DO beta = 1, B%NumOpenR
-               SD%R(i,j) = SD%R(i,j) - B%Zf(i,beta)*B%Zf(j,beta)/B%bf(beta) !
-            ENDDO
-         ENDDO
-      ENDDO
-
-      !call sqrmatinv(BB%Zfp,BB%NumOpenR)  This gives the same result as the code segment  executed above
-      !SD%R = matmul(BB%Zf,BB%Zfp)
-
-      DEALLOCATE(s,c,Imat,Jmat,sp,cp)
-    END SUBROUTINE CalcK
-
-  END MODULE Scattering
-  !****************************************************************************************************
   MODULE BalujaParameters
   IMPLICIT NONE
     DOUBLE PRECISION BalujaMCmat(3,3,2), BalujaEth(3)              ! this is the Baluja et al Multipole coupling matrix and thresholds
@@ -617,24 +214,32 @@ END MODULE DataStructures
     END SUBROUTINE makeEgrid
 !****************************************************************************************************
 PROGRAM main
+  !--------------------------------------------------------------------
+  ! Benchmark against Baluja, Burke & Morgan, Comput. Phys. Commun. 27
+  ! (1982) 299-307, section 6 "Description of the test run": propagate
+  ! the literature R-matrix RMatBaluja1 (given at r=5, from Berrington
+  ! et al.) outward to r=15 and compare against RMatBaluja2 (the paper's
+  ! own "R-MATRIX AT END OF OUTWARD PROPAGATION"). This is an outward-
+  ! propagation-only check -- it does not exercise the regularity
+  ! boundary condition at r=0, only CalcGamLam/BoxMatch/CalcK.
+  !--------------------------------------------------------------------
   USE DataStructures
   USE GlobalVars
   USE BalujaParameters
   USE Quadrature
-  USE MorsePotential
   USE scattering
 
   IMPLICIT NONE
-  TYPE(BPData) BPD,BPD1,BPD0
-  TYPE(GenEigVal) EIG,EIG1
-  TYPE(BoxData) BA, BB, Bnull
+  TYPE(BPData) BPD,BPD0
+  TYPE(GenEigVal) EIG
+  TYPE(BoxData) Bseed
   TYPE(BoxData), ALLOCATABLE :: Boxes(:)
   TYPE(ScatData) SD
-  TYPE(Morse) :: M
-  DOUBLE PRECISION, ALLOCATABLE :: evec(:,:), eval(:)!, temp0(:,:)
-  DOUBLE PRECISION, ALLOCATABLE :: Egrid(:), xprim(:)
+  DOUBLE PRECISION, ALLOCATABLE :: EvecSeed(:,:), EvalSeed(:)
+  DOUBLE PRECISION, ALLOCATABLE :: xprim(:)
+  DOUBLE PRECISION, ALLOCATABLE :: evalRed(:), evecRed(:,:), LamooDiag(:)
   DOUBLE PRECISION xDelt
-  INTEGER NumE, iE, beta, i, iBox,lx,kx
+  INTEGER NumRealBoxes, beta, i, iBox,lx,kx, NumOpenChannels
   !----------------------------------------------------------------------
   ! Read information from the input file
   !----------------------------------------------------------------------
@@ -647,296 +252,154 @@ PROGRAM main
   ALLOCATE(xLeg(LegPoints),wLeg(LegPoints))
   CALL GetGaussFactors(LegendreFile,LegPoints,xLeg,wLeg)
 
+  CALL SetMultipoleCoup()  ! fills lmom, BalujaEth, BalujaMCmat, Znet, RMatBaluja1/2
 
-!  call checkbessel(4990d0,5010d0,1000,0d0,3,100)
-!  stop
   !---------------------------------------------------------------------
-  ! allocate the data for the Boxes
+  ! Fixed open-channel count for this run (mirrors CABA.EXT.f's
+  ! NumOpenChannels: chosen once for the whole energy, not per-box).
+  ! Channels are assumed ordered open-before-closed, same convention as
+  ! CABA. k_1^2 = 2*Energy is the total energy relative to channel 1.
   !---------------------------------------------------------------------
-  xDelt=(xEnd-xStart)/DBLE(NumBoxes)
-  ALLOCATE(Boxes(NumBoxes))
-  Boxes(1)%NumOpenL = 0
-  Boxes(1)%NumOpenR = 3
-  Boxes(1)%betaMax = Boxes(1)%NumOpenL + Boxes(1)%NumOpenR
-  Boxes(1)%xl=xStart
-  Boxes(1)%xr=xDelt
-  CALL AllocateBox(Boxes(1))
-  CALL InitZeroBox(Boxes(1))
-  WRITE(6,*) "Box",1,Boxes(1)%xl,Boxes(1)%xr
-  CALL printmatrix(Boxes(1)%Zf,Boxes(1)%NumOpenR,Boxes(1)%NumOpenR,6)
-  DO i = 2,NumBoxes
-    Boxes(i)%NumOpenL = 3
-    Boxes(i)%NumOpenR = 3
-    Boxes(i)%betaMax = Boxes(1)%NumOpenL + Boxes(1)%NumOpenR
-    Boxes(i)%xl=Boxes(i-1)%xr
-    Boxes(i)%xr=Boxes(i-1)%xr+xDelt
-    CALL AllocateBox(Boxes(i))
-    CALL InitZeroBox(Boxes(i))
-    WRITE(6,*) "Box",i,Boxes(i)%xl,Boxes(i)%xr
-!    CALL printmatrix(Boxes(i)%Zf,Boxes(i)%NumOpenR,Boxes(i)%NumOpenR,6)
+  NumOpenChannels = 0
+  DO i = 1,NumChannels
+     IF (2d0*Energy.GE.BalujaEth(i)) NumOpenChannels = NumOpenChannels+1
+  ENDDO
+  WRITE(6,*) "NumOpenChannels = ",NumOpenChannels," (of ",NumChannels,") at k_1^2 = ",2d0*Energy
+
+  !---------------------------------------------------------------------
+  ! Seed a zero-width "box" at r=xStart directly from the literature
+  ! R-matrix RMatBaluja1, instead of deriving it from a regularity
+  ! condition at r=0. R = -Zf.diag(1/bf).Zf^T with Zf orthonormal is
+  ! exactly the symmetric eigendecomposition of R (matches how CalcK
+  ! builds SD%R from Zf/bf), so diagonalizing RMatBaluja1 gives Zf/bf/Zfp
+  ! directly.
+  !
+  ! Convention mismatch: Baluja/Burke/Morgan (1982) Eq. (2) defines the
+  ! R-matrix via u_i(a) = Sum_j R_ij(a)*[a*du_j/dr]_{r=a} -- note the
+  ! explicit factor of "a" multiplying the derivative. CalcK's SD%R
+  ! (following Burke's later thesis convention, Eq. 3.12 there) has no
+  ! such factor: u_i(a) = Sum_j R_ij(a)*[du_j/dr]_{r=a}. So
+  ! R_code(a) = a * R_paper(a); scale RMatBaluja1 by xStart on the way in
+  ! and RMatBaluja2 by xEnd for the comparison below.
+  !---------------------------------------------------------------------
+  Bseed%NumOpenL = 0
+  Bseed%NumOpenR = NumChannels
+  CALL AllocateBox(Bseed)
+  CALL InitZeroBox(Bseed)
+
+  ALLOCATE(EvecSeed(NumChannels,NumChannels),EvalSeed(NumChannels))
+  CALL MyDSYEV(xStart*RMatBaluja1,NumChannels,EvalSeed,EvecSeed)
+  DO beta = 1,NumChannels
+     Bseed%bf(beta) = -1.0d0/EvalSeed(beta)
+     DO i = 1,NumChannels
+        Bseed%Zf(i,beta) = EvecSeed(i,beta)
+        Bseed%Zfp(i,beta) = -Bseed%Zf(i,beta)*Bseed%bf(beta)
+     ENDDO
+  ENDDO
+  DEALLOCATE(EvecSeed,EvalSeed)
+
+  !---------------------------------------------------------------------
+  ! Real boxes spanning xStart (=5) to xEnd (=15)
+  !---------------------------------------------------------------------
+  NumRealBoxes = NumBoxes - 1
+  ALLOCATE(Boxes(NumRealBoxes))
+  xDelt = (xEnd-xStart)/DBLE(NumRealBoxes)
+  DO i = 1,NumRealBoxes
+     Boxes(i)%NumOpenL = NumChannels
+     IF (i.EQ.NumRealBoxes) THEN
+        Boxes(i)%NumOpenR = NumOpenChannels  ! final box: only physically-open channels retained
+     ELSE
+        Boxes(i)%NumOpenR = NumChannels      ! interior box-to-box boundary: all channels retained
+     ENDIF
+     IF (i.EQ.1) THEN
+        Boxes(i)%xl = xStart
+     ELSE
+        Boxes(i)%xl = Boxes(i-1)%xr
+     ENDIF
+     Boxes(i)%xr = xStart + i*xDelt
+     CALL AllocateBox(Boxes(i))
+     CALL InitZeroBox(Boxes(i))
+     WRITE(6,*) "Box",i,Boxes(i)%xl,Boxes(i)%xr
   ENDDO
 
-  !-------------------------------------------------------------------
-  ! Intitializes some BPD1 variables to the input values.
-  ! This is the basis set used at the left edge (r=0) in Boxes(1)
-  !-------------------------------------------------------------------
-  BPD1%NumChannels = NumChannels
-  BPD1%Order = Order
-  BPD1%Left = StartBC
-  BPD1%Right = 2
-  BPD1%xNumPoints = xTotNumPoints
-  BPD1%kl = kStart ! only relevant for Left = 3. This is the normal log-derivative at BPD%xl
-  BPD1%kr = kEnd   ! only relevant for Right = 3. This is the normal log-derivative at BPD%xr
-
   !---------------------------------------------------------------------
-  ! Intitializes some BPD0 variables to the input values.
-  ! This is the "primitive" basis set defined over range [0,1] (see below.)
+  ! "Primitive" basis set defined over [0,1], rescaled per box (avoids
+  ! recomputing B-spline values from scratch for every equal-width box).
   !---------------------------------------------------------------------
   BPD0%NumChannels = NumChannels
   BPD0%Order = Order
   BPD0%Left = 2
   BPD0%Right = 2
   BPD0%xNumPoints = xTotNumPoints
-  BPD0%kl = kStart ! only relevant for Left = 3. This is the normal log-derivative at BPD%xl
-  BPD0%kr = kEnd ! only relevant for Right = 3. This is the normal log-derivative at BPD%xr
-
-  !---------------------------------------------------------------------
-  ! Copy over the properties of the primitive set to the workhorse set BPD that will
-  ! actually be used for propagation.
-  !---------------------------------------------------------------------
-  BPD=BPD0
-  ! Allocate memory for the basis sets and potential arrays
-  CALL AllocateBPD(BPD1)
-  CALL AllocateBPD(BPD)
+  BPD0%kl = kStart
+  BPD0%kr = kEnd
   CALL AllocateBPD(BPD0)
-
-  !---------------------------------------------------------------------
-  ! Make and fill the arrays for the basis used in Boxes(1)
-  !---------------------------------------------------------------------
-  BPD1%xl=Boxes(1)%xl
-  BPD1%xr=Boxes(1)%xr
-  CALL GridMakerLinear(BPD1%xNumPoints,BPD1%xl,BPD1%xr,BPD1%xPoints)
-  CALL Makebasis(BPD1)
-
-  !---------------------------------------------------------------------
-  ! Make and fill the arrays for the primitive set
-  !---------------------------------------------------------------------
-  allocate(xprim(xTotNumPoints))
+  ALLOCATE(xprim(xTotNumPoints))
   CALL GridMakerLinear(BPD0%xNumPoints,0d0,1d0,xprim)
-  BPD0%xPoints=xprim
+  BPD0%xPoints = xprim
   CALL MakeBasis(BPD0)
-  !Copy over the primitive set to the workhose set
-  BPD=BPD0
-  ! Initialize the potential data
-  CALL InitMorse(M)
+  BPD0%lam(1:NumChannels) = lmom(1:NumChannels)
 
-  ! make the energy grid
-  NumE=500
-  ALLOCATE(Egrid(NumE))
-  CALL makeEgrid(Egrid,NumE,M%Eth(1)+0.01d0,M%Eth(2)-0.01d0)
+  BPD = BPD0  ! workhorse set actually used for propagation
 
-  ! Fill the arrays for the potential matrix for the first box
-  CALL SetMorsePotential(BPD1,M)
-
-  ! Allocate memory for the eigenvalue problem
-  EIG1%MatrixDim=BPD1%MatrixDim
-  CALL AllocateEIG(EIG1)
-  WRITE(6,*) "EIG1%MatrixDim = ",EIG1%MatrixDim
-
-  EIG%MatrixDim=BPD%MatrixDim
+  EIG%MatrixDim = BPD%MatrixDim
   CALL AllocateEIG(EIG)
   WRITE(6,*) "EIG%MatrixDim = ",EIG%MatrixDim
 
-  ! Allocate memory for the scattering data
-  CALL AllocateScat(SD,Boxes(NumBoxes)%NumOpenR)
+  CALL AllocateScat(SD,NumChannels)
 
-  DO iE = 1, NumE
-    Energy = Egrid(iE)
-    iBox = 1
-    CALL CalcGamLam(BPD1,EIG1)
-    CALL Mydggev(EIG1%MatrixDim,EIG1%Gam,EIG1%MatrixDim,EIG1%Lam,EIG1%MatrixDim,EIG1%eval,EIG1%evec)
-    CALL BoxMatch(Bnull, Boxes(iBox), BPD1, EIG1, EffDim, AlphaFactor)
-    CALL CalcK(Boxes(iBox),BPD1,SD,reducedmass,EffDim,AlphaFactor,Egrid(iE),M%Eth)
-    DO iBox = 2, NumBoxes
-      !BPD=BPD0  ! recall the stored BPD0 into BPD in case some things are being rewritten
-      BPD%xl=Boxes(iBox)%xl
-      BPD%xr=Boxes(iBox)%xr
-      BPD%xPoints = BPD%xl + (BPD%xr-BPD%xl)*xprim
-      do kx = 1,BPD%xNumPoints
-        do lx = 1,LegPoints
-          BPD%ux(lx,kx,1:BPD%xDim) = BPD0%ux(lx,kx,1:BPD%xDim)/(BPD%xr-BPD%xl)
-        enddo
-      enddo
-      CALL SetMorsePotential(BPD,M)  ! would like to change this so we don't have to do it for each energy.
-      CALL CalcGamLam(BPD,EIG)
-      CALL Mydggev(EIG%MatrixDim,EIG%Gam,EIG%MatrixDim,EIG%Lam,EIG%MatrixDim,EIG%eval,EIG%evec)
-      CALL BoxMatch(Boxes(iBox-1), Boxes(iBox), BPD, EIG, EffDim, AlphaFactor)
-      SD%K=0d0
-      CALL CalcK(Boxes(iBox),BPD,SD,reducedmass,EffDim,AlphaFactor,Egrid(iE),M%Eth)
-    ENDDO
-    write(6,*) Energy, SD%K
-    WRITE(10,*) Energy, SD%K
+  DO iBox = 1,NumRealBoxes
+     BPD%xl = Boxes(iBox)%xl
+     BPD%xr = Boxes(iBox)%xr
+     BPD%xPoints = BPD%xl + (BPD%xr-BPD%xl)*xprim
+     DO kx = 1,BPD%xNumPoints
+        DO lx = 1,LegPoints
+           BPD%ux(lx,kx,1:BPD%xDim) = BPD0%ux(lx,kx,1:BPD%xDim)/(BPD%xr-BPD%xl)
+        ENDDO
+     ENDDO
+     CALL SetBalujaPotential(BPD)
+     CALL CalcGamLam(BPD,EIG,Boxes(iBox)%NumOpenL,Boxes(iBox)%NumOpenR)
+     ALLOCATE(evalRed(Boxes(iBox)%betaMax),evecRed(Boxes(iBox)%betaMax,Boxes(iBox)%betaMax))
+     ALLOCATE(LamooDiag(Boxes(iBox)%betaMax))
+     CALL PartitionAndEliminate(BPD,EIG,Boxes(iBox)%NumOpenL,Boxes(iBox)%NumOpenR,evalRed,evecRed,LamooDiag)
+     IF (iBox.EQ.1) THEN
+        CALL BoxMatch(Bseed, Boxes(iBox), BPD, evalRed, evecRed, LamooDiag, EffDim, AlphaFactor)
+     ELSE
+        CALL BoxMatch(Boxes(iBox-1), Boxes(iBox), BPD, evalRed, evecRed, LamooDiag, EffDim, AlphaFactor)
+     ENDIF
+     DEALLOCATE(evalRed,evecRed,LamooDiag)
   ENDDO
+
+  CALL CalcK(Boxes(NumRealBoxes),BPD,SD,reducedmass,EffDim,AlphaFactor,Energy,BalujaEth)
+
+  WRITE(6,*)
+  WRITE(6,*) "k_1^2 = ",2d0*Energy," Ry   (Energy input = ",Energy,")"
+  WRITE(6,*) "Thresholds (Ry):", BalujaEth(1:NumChannels)
+  WRITE(6,*)
+  WRITE(6,*) "Computed R-matrix at r=",Boxes(NumRealBoxes)%xr," (RMATPROP2016, full ",NumChannels,"x",NumChannels,"):"
+  CALL printmatrix(SD%R,NumChannels,NumChannels,6)
+
+  IF (2d0*Energy.LT.2.5d0) THEN
+     WRITE(6,*) "(No literature reference R-matrix at this energy -- 2.5 Ry is the only Baluja/Burke/Morgan test point.)"
+  ELSE
+     WRITE(6,*) "Reference xEnd*RMatBaluja2 (Baluja/Burke/Morgan convention, u=a*R*u'):"
+     CALL printmatrix(xEnd*RMatBaluja2,NumChannels,NumChannels,6)
+     WRITE(6,*) "Difference:"
+     CALL printmatrix(SD%R-xEnd*RMatBaluja2,NumChannels,NumChannels,6)
+  ENDIF
+
+  WRITE(6,*)
+  WRITE(6,*) "Number of open channels = ",SIZE(SD%K,1)
+  WRITE(6,*) "K-matrix (open channels only):"
+  CALL printmatrix(SD%K,SIZE(SD%K,1),SIZE(SD%K,2),6)
+  WRITE(6,*) "S-matrix, real part:"
+  CALL printmatrix(DBLE(REAL(SD%S)),SIZE(SD%S,1),SIZE(SD%S,2),6)
+  WRITE(6,*) "S-matrix, imag part:"
+  CALL printmatrix(DBLE(AIMAG(SD%S)),SIZE(SD%S,1),SIZE(SD%S,2),6)
 
 20 FORMAT(1P,100e14.8)
 END PROGRAM main
 !****************************************************************************************************
-SUBROUTINE printmatrix(M,nr,nc,file)
-  IMPLICIT NONE
-  INTEGER nr,nc,file,j,k
-  DOUBLE PRECISION M(nr,nc)
-
-  DO j = 1,nr
-     WRITE(file,20) (M(j,k), k = 1,nc)
-  ENDDO
-
-20 FORMAT(1P,100D20.12)
-30 FORMAT(100F12.6)
-END SUBROUTINE printmatrix
-!****************************************************************************************************
-SUBROUTINE GridMakerLinear(xNumPoints,x1,x2,xPoints)
-  IMPLICIT NONE
-  INTEGER, INTENT(in) :: xNumPoints
-  DOUBLE PRECISION, INTENT(in) :: x1,x2
-  DOUBLE PRECISION, INTENT(out) :: xPoints(xNumPoints)
-  INTEGER i
-  DOUBLE PRECISION xDelt
-  xDelt = (x2-x1)/DBLE(xNumPoints-1)
-  DO i = 1,xNumPoints
-     xPoints(i) = (i-1)*xDelt + x1 ! Simple linear grid
-  ENDDO
-END SUBROUTINE GridMakerLinear
-!****************************************************************************************************
-SUBROUTINE BoxMatch(BA, BB, BPD, EIG, dim, alphafact)
-  USE DataStructures
-  IMPLICIT NONE
-  TYPE(BPData), INTENT(in) :: BPD
-  TYPE(GenEigVal), INTENT(in) :: EIG
-  TYPE(BoxData), INTENT(in) :: BA
-  TYPE(BoxData) BB
-
-  DOUBLE PRECISION, ALLOCATABLE :: tempnorm(:,:),  temp0(:,:), ZT(:,:)
-  DOUBLE PRECISION, ALLOCATABLE :: BigZA(:,:), BigZB(:,:),Dvec(:,:)
-  DOUBLE PRECISION, ALLOCATABLE :: Dval(:)
-  INTEGER, ALLOCATABLE :: Dikeep(:)
-  DOUBLE PRECISION NewNorm, dim, alphafact, absd
-  INTEGER i,j,k,beta,betaprime,nch,mch!,betamax
-  INTEGER ikeep(BB%betaMax)
-
-  j=1
-  ikeep = 0
-  DO i = 1, BPD%MatrixDim
-    IF(ABS(EIG%eval(i)).GE.1e-12) THEN
-      BB%b(j) = EIG%eval(i)
-      ikeep(j)=i
-      j = j+1
-    ENDIF
-  ENDDO
-
-  ALLOCATE(tempnorm(BPD%MatrixDim,BB%betaMax))
-  BB%Norm=0d0
-  tempnorm=0d0
-  BB%Nbeta=0d0
-  DO beta=1,BB%betaMax
-    DO betaprime=1,BB%betaMax
-      BB%Norm(beta,betaprime)=0d0
-      DO i=1,BPD%MatrixDim
-        tempnorm(i,betaprime)=0.0d0
-        DO j=1,BPD%MatrixDim
-          tempnorm(i,betaprime) = tempnorm(i,betaprime) + EIG%Lam(i,j)*EIG%evec(j,ikeep(betaprime)) !
-        ENDDO
-        BB%Norm(beta,betaprime) = BB%Norm(beta,betaprime) + EIG%evec(i,ikeep(beta))*tempnorm(i,betaprime) !
-      ENDDO
-    ENDDO
-    BB%Nbeta(beta) = dsqrt(BB%Norm(beta,beta))
-  ENDDO
-
-  DO beta = 1,BB%betaMax
-    DO i = 1,BB%NumOpenL
-      BB%Z(i,beta) = BPD%xl**(0.5d0*(dim-1d0-2d0*alphafact))*&
-      EIG%evec((i-1)*BPD%xDim + 1, ikeep(beta))/BB%Nbeta(beta)!
-      BB%ZP(i,beta) = -BB%b(beta)*BB%Z(i,beta)
-    ENDDO
-    DO i = 1, BB%NumOpenR
-      BB%Z(i+BB%NumOpenL,beta) = BPD%xr**(0.5d0*(dim-1d0-2d0*alphafact))*&
-      EIG%evec((i-1)*BPD%xDim + BPD%xDim,ikeep(beta))/BB%Nbeta(beta) !
-      BB%ZP(i+BB%NumOpenL,beta) = -BB%b(beta)*BB%Z(i+BB%NumOpenL,beta)
-    ENDDO
-  ENDDO
-
-  ALLOCATE(ZT(BB%betaMax,BB%betaMax))
-  ALLOCATE(temp0(BB%betaMax,BB%betaMax))
-  ZT = BB%Z
-  temp0 = 0d0
-  temp0 = MATMUL(TRANSPOSE(ZT),BB%Z)
-
-  ALLOCATE(Dikeep(BB%betaMax + BB%NumOpenL))
-  ALLOCATE(BigZA(BB%NumOpenL + BB%betaMax,BB%NumOpenL+BB%betaMax),BigZB(BB%NumOpenL+BB%betaMax,BB%NumOpenL+BB%betaMax)) !
-  ALLOCATE(Dvec(BB%NumOpenL+BB%betaMax,BB%NumOpenL+BB%betaMax))
-  ALLOCATE(Dval(BB%NumOpenL+BB%betaMax))
-
-  Dvec=0d0
-  BigZA=0d0
-  BigZB=0d0
-
-  DO i=1,BB%NumOpenL
-    DO beta=1,BB%NumOpenL
-      BigZA(i,beta)=BA%Zf(i,beta)
-      BigZA(i+BB%NumOpenL,beta)=BA%Zfp(i,beta)
-    ENDDO
-  ENDDO
-
-  DO i=1,BB%NumOpenL
-    DO beta=1,BB%betaMax
-      BigZA(i, BB%NumOpenL+beta) = -BB%Z(i,beta)
-      BigZA(i+BB%NumOpenL,beta+BB%NumOpenL) = BB%ZP(i,beta)
-    ENDDO
-  ENDDO
-
-  DO i=1,BB%NumOpenR
-    DO beta=1,BB%betaMax
-      BigZA(i+2*BB%NumOpenL, BB%NumOpenL+beta)=-BB%ZP(i+BB%NumOpenL,beta)
-      BigZB(i+2*BB%NumOpenL, BB%NumOpenL+beta)=BB%Z(i+BB%NumOpenL,beta)
-    ENDDO
-  ENDDO
-
-  CALL Mydggev(BB%NumOpenL+BB%betaMax,BigZA,BB%NumOpenL+BB%betaMax,BigZB,BB%NumOpenL+BB%betaMax,Dval,Dvec) !
-  j=1
-  DO i = 1,BB%NumOpenL+BB%betaMax
-    absd=ABS(Dval(i))
-    IF((absd.GE.1d-12).and.(absd.lt.1d12)) THEN
-      Dikeep(j)=i
-      BB%bf(j)=Dval(i)
-      j=j+1
-    ENDIF
-  ENDDO
-
-  DO beta=1,BB%NumOpenR
-    !for each beta, construct the final state with constant log-derivative at the right boundary
-    DO i=1, BB%NumOpenR
-      BB%Zf(i,beta) = 0.0d0
-      DO betaprime = 1,BB%betaMax
-        BB%Zf(i,beta) =  BB%Zf(i,beta) + BB%Z(BB%NumOpenL+i,betaprime)*Dvec(BB%NumOpenL+betaprime,Dikeep(beta)) !
-      ENDDO
-    ENDDO
-    ! calculate the normalization of the final state
-    NewNorm=0.0d0
-    DO i=1,BB%NumOpenR
-      NewNorm=NewNorm+BB%Zf(i,beta)**2
-    ENDDO
-    NewNorm=dsqrt(NewNorm)
-    ! normalize and set the derivative Zfp
-    DO i=1,BB%NumOpenR
-      BB%Zf(i,beta) = BB%Zf(i,beta)/NewNorm
-      BB%Zfp(i,beta) = -BB%Zf(i,beta)*BB%bf(beta)
-    ENDDO
-  ENDDO
-
-  DEALLOCATE(Dikeep,Dvec,Dval,BigZA,BigZB)
-  DEALLOCATE(temp0)
-  DEALLOCATE(tempnorm)
-  DEALLOCATE(ZT)
-END SUBROUTINE BoxMatch
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
   !use this routine to test if the potential is right.  Looks ok!

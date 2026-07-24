@@ -2,16 +2,16 @@ NumParticles	NumChannels	SpatialDim (double-prec)	NumAllChan	Order
 2		          3		        3.d0	   	20	        	5
 
 mass1		mass2		mass3		mass4
-1.d0		1.d0		-		     -
+2.d0		2.d0		-		     -
 
 xMin		xMax		xNumPoints 	LegPoints
-0d0	  	20d0		10          	10
+5.d0	  	15.d0		10          	10
 
 NumBoxes	Left		Right		kStart		kEnd
-5	        0	     	2   		1d20  		1d20
+4	        0	     	2   		1d20  		1d20
 
 Energy
-2.5d0
+1.0d0
 
 
 !----------------------------------------------------------------------------------------------------
@@ -25,8 +25,12 @@ Energy
 ! xMin = 			Start of R-matrix prop radius
 ! xMax =			End of R-matrix prop radius
 ! xNumPoints =			Number of radial grid points per box
-! NumBoxes =			Number of R-matrix Boxes to be used in the propagator
-! Left =     			Boundary condition at xMin
+! NumBoxes =			Number of R-matrix Boxes (1 seed box at xMin from the literature
+!                               R-matrix + (NumBoxes-1) real propagation boxes spanning xMin to xMax)
+! Left =     			Boundary condition at xMin (unused for the Baluja seeded-box test)
 ! Right =			Boundary condition at xMax
-! Energy =			Energy (the value of 2.5d0 Rydberg used for the Baluja test case)
+! Energy =			Energy in the CalcGamLam convention, i.e. k^2/2 -- the Baluja et al.
+!                               test case uses 2.5 Rydberg = k_1^2, so Energy=1.25d0 here.
+!                               mass1=mass2=2.0 (-> reducedmass=1.0) matches the paper's
+!                               Rydberg-unit convention (2*reducedmass=1 in the kinetic term).
 !----------------------------------------------------------------------------------------------------

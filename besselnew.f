@@ -28,7 +28,15 @@ c!
          call BesselAsymNew(order,x,j,y,jp,yp)
       endif
 !     call bessjy(x,order,j,y,jp,yp)
-      prefact = mygamma(halfd-1.d0)*2**(halfd-2d0)/df
+      if (d.eq.2) then
+!        mygamma(halfd-1)=mygamma(0) is a pole here. The K/R/S-matrix asymptotic
+!        matching (CalcK, CalcSmatrixGeneral) only ever uses rj/ry/rjp/ryp through
+!        Wronskian-normalized ratios, in which this overall constant cancels exactly
+!        regardless of its value -- so any nonzero placeholder is safe.
+         prefact = 1.d0
+      else
+         prefact = mygamma(halfd-1.d0)*2**(halfd-2d0)/df
+      endif
       hypj = prefact*j*x**(-halfd+1d0)
       hypy = prefact*y*x**(-halfd+1d0)
       hypjp = prefact*x**(-halfd+1d0)*(jp - (halfd - 1d0)*j/x)

@@ -1,0 +1,12 @@
+DataDir
+3bodydata_delta_1ch_Qmu2
+
+Order  xNumPoints  LegPoints
+5      40          10
+
+NumBoxes  xMin  xMax
+1       0.02d0 20.0d0
+
+Emin  Emax  NumEnergies
+-0.99d0 -0.02d0 40
+quadratic
