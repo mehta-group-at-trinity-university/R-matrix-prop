@@ -8,5 +8,5 @@ NumBoxes  xMin  xMax
 200       0.0d0 100.0d0
 
 Emin  Emax  NumEnergies
--0.99d0 -0.02d0 40
+-0.9999999635d0 -0.02d0 150
 quadratic
