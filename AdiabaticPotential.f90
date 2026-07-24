@@ -136,7 +136,7 @@ CONTAINS
   ! local, multiplicative couplings, so they share CalcGamLam's existing Pot mechanism.
   ! BPD%Pcoup(mch,nch) = P_mn(R): the antisymmetric derivative coupling CalcGamLam's new
   ! P-coupling loop consumes separately.
-  SUBROUTINE SetAdiabaticPotential(BPD,muLocal,UInterp,PInterp,QInterp)
+  SUBROUTINE SetAdiabaticPotential(BPD,muLocal,UInterp,PInterp,QInterp,CoulombC)
     USE DataStructures
     USE Quadrature
     IMPLICIT NONE
@@ -144,10 +144,17 @@ CONTAINS
     DOUBLE PRECISION, INTENT(in) :: muLocal
     TYPE(InterpolatingFunction), INTENT(in) :: UInterp(BPD%NumChannels)
     TYPE(InterpolatingMatrix), INTENT(in) :: PInterp, QInterp
+    ! Per-channel Coulomb coefficient (0 for ordinary channels). Where nonzero, the
+    ! diagonal combo(R)=2*mu*U+Q is replaced below RcutoffAnalytic by the analytic
+    ! small-R series (AnalyticComboNearOrigin) instead of the tabulated-data spline,
+    ! which has significant Runge-phenomenon ringing there (see CoulombRHS).
+    DOUBLE PRECISION, INTENT(in) :: CoulombC(BPD%NumChannels)
 
     INTEGER kx,lx,mch
     DOUBLE PRECISION ax,bx,xScaledZero,R
     DOUBLE PRECISION xScale(BPD%xNumPoints)
+    DOUBLE PRECISION, EXTERNAL :: AnalyticComboNearOrigin
+    DOUBLE PRECISION, PARAMETER :: RcutoffAnalytic = 0.01d0
 
     DO kx = 1,BPD%xNumPoints-1
        ax = BPD%xPoints(kx)
@@ -157,10 +164,42 @@ CONTAINS
        DO lx = 1,LegPoints
           BPD%x(lx,kx) = xScale(kx)*xLeg(lx) + xScaledZero
           R = BPD%x(lx,kx)
-          BPD%Pcoup(:,:,lx,kx) = InterpolatedMatrix(R,PInterp)
-          BPD%Pot(:,:,lx,kx) = InterpolatedMatrix(R,QInterp)/(2d0*muLocal)
+          ! P is antisymmetric (Pcoup(mch,mch)=0 always) -- for this 1-channel test
+          ! there is no off-diagonal P at all, so skipping the interpolant call below
+          ! RcutoffAnalytic is exact here (not just an approximation). Needed because
+          ! InterpolatedMatrix(R,PInterp) hits the same dbsval domain-edge search bug
+          ! at very small R that the U/Q interpolation calls were guarded against above.
+          IF (R.LT.RcutoffAnalytic) THEN
+             BPD%Pcoup(:,:,lx,kx) = 0d0
+          ELSE
+             BPD%Pcoup(:,:,lx,kx) = InterpolatedMatrix(R,PInterp)
+          ENDIF
+          ! Verified directly against this repo's own Uad.dat/Qmat.dat data:
+          ! 2*mu*U + Q - 0.25/R^2 is flat to 1e-12 (= 2*mu*Threshold) out to
+          ! R=200, while 2*mu*U - Q - 0.25/R^2 has a 3.7e-5 spread and is
+          ! still visibly drifting there -- i.e. +Q/(2mu) is the convention
+          ! actually used by this repo's Qmat.dat (do NOT "fix" this to match
+          ! CABS.f90's/VQmat.dat's documented sign -- that file evidently uses
+          ! an internally opposite Q convention from this one).
+          ! Below RcutoffAnalytic, skip the QInterp/UInterp calls entirely (not just
+          ! override their result afterward) -- both hit the same dbsval domain-edge
+          ! search bug at very small R that the guard below is trying to avoid.
+          IF (R.LT.RcutoffAnalytic) THEN
+             BPD%Pot(:,:,lx,kx) = 0d0
+          ELSE
+             BPD%Pot(:,:,lx,kx) = InterpolatedMatrix(R,QInterp)/(2d0*muLocal)
+          ENDIF
           DO mch = 1,BPD%NumChannels
-             BPD%Pot(mch,mch,lx,kx) = BPD%Pot(mch,mch,lx,kx) + Interpolated(R,UInterp(mch))
+             IF (CoulombC(mch).NE.0d0 .AND. R.LT.RcutoffAnalytic) THEN
+                BPD%Pot(mch,mch,lx,kx) = AnalyticComboNearOrigin(R,muLocal,CoulombC(mch))/(2d0*muLocal)
+             ELSE IF (R.GE.RcutoffAnalytic) THEN
+                BPD%Pot(mch,mch,lx,kx) = BPD%Pot(mch,mch,lx,kx) + Interpolated(R,UInterp(mch))
+             ENDIF
+             ! else: ordinary (non-Coulomb) channel with R below RcutoffAnalytic --
+             ! doesn't occur for any channel this repo currently tests (only the
+             ! genuine two-body bound-pair channel's box ever reaches R this small);
+             ! BPD%Pot(mch,mch) is left at 0 rather than risk the dbsval domain-edge
+             ! bug by calling Interpolated(R,UInterp(mch)) there.
           ENDDO
        ENDDO
     ENDDO

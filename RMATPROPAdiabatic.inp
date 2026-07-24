@@ -1,11 +1,11 @@
 DataDir
-3bodydata_delta_1ch_Qmu2
+3bodydata_delta_5ch
 
 Order  xNumPoints  LegPoints
-5      40          10
+5      10          10
 
 NumBoxes  xMin  xMax
-1       0.02d0 20.0d0
+200       0.0d0 100.0d0
 
 Emin  Emax  NumEnergies
 -0.99d0 -0.02d0 40

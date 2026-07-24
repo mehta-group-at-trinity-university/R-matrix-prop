@@ -52,7 +52,7 @@ PROGRAM main
   DOUBLE PRECISION, ALLOCATABLE :: Threshold(:), Leff(:), CoulombC(:)
   TYPE(InterpolatingFunction), ALLOCATABLE :: UInterp(:)
   TYPE(InterpolatingMatrix) :: PInterp, QInterp
-  DOUBLE PRECISION xDelt, muLocal, alpha, ddim
+  DOUBLE PRECISION muLocal, alpha, ddim
   DOUBLE PRECISION Emin, Emax, qOurs, Kelem, rawDelta, delta, prevDelta
   INTEGER NumDataPoints, NumOpenChannels, xNumPoints, LegPointsLocal
   INTEGER i, iBox, lx, kx, NumEnergies, ie, nBranch, PhaseFile, KMatFile
@@ -60,7 +60,10 @@ PROGRAM main
   ! TEMP diagnostic toggle: use the simple, energy-independent Neumann-sum box-1 basis
   ! (mirroring 2006/2007 adrmatprop.f's Left=1) instead of the Robin/Coulomb-matched one.
   ! Intended for use with a very small xMin (near the smallest tabulated R).
-  LOGICAL, PARAMETER :: UseNeumannBox1 = .FALSE.
+  LOGICAL, PARAMETER :: UseNeumannBox1 = .TRUE.
+  ! Box-boundary spacing power: 1.0 = linear (uniform box widths), 2.0 = quadratic
+  ! (clusters more/narrower boxes near xStart). BoxEdge(i) = xStart + (xEnd-xStart)*(i/NumBoxes)^BoxSpacingPower.
+  DOUBLE PRECISION, PARAMETER :: BoxSpacingPower = 1.0d0
 
   !----------------------------------------------------------------------
   ! Read the run's numerical parameters, and the physics (NumChannels,
@@ -151,18 +154,25 @@ PROGRAM main
   ! with energy so their matrix elements never need to be recomputed after
   ! this. Box 1 and the last box are handled fresh inside the energy loop.
   !---------------------------------------------------------------------
-  xDelt = (xEnd-xStart)/DBLE(NumBoxes)
+  ! Quadratic box-boundary spacing (not just quadratic grid WITHIN box 1): boundary(i) =
+  ! xStart + (xEnd-xStart)*(i/NumBoxes)^2, clustering more/narrower boxes near xStart so
+  ! resolution is concentrated where the delta-function channel's U/Q curves vary fastest.
+  ! (BoxEdge(i), defined below at each use site, replaces the old uniform xStart+i*xDelt.)
 
   BPD1%NumChannels = NumChannels
   BPD1%Order = Order
-  ! Left=3: single log-derivative-constrained boundary function (see
-  ! BuildBox1CombinedBasis/CalcGamLamBox1) -- NOT Left=2, which would leave box 1's
-  ! NumOpenL=0 boundary DOF spanning the identical subspace regardless of any
-  ! per-channel combination applied within it.
-  BPD1%Left = 3
+  ! TEST (per user request): Left=2 (both B1,B2 independently retained at xMin),
+  ! NumOpenL still 0 (Boxes(1)%NumOpenL=0 below) -- letting the ordinary
+  ! CalcGamLam/PartitionAndEliminate elimination mechanism (already exercised for
+  ! every other box's closed channels) handle box 1's boundary instead of the
+  ! specialized BuildBox1CombinedBasis/CalcGamLamBox1 Robin-matched basis. Earlier
+  ! note claimed this is a no-op (basis change within an already-eliminated
+  ! subspace) -- re-verifying now that the near-origin potential/BC pipeline has
+  ! been substantially fixed since that claim was made.
+  BPD1%Left = 2
   BPD1%Right = 2
   BPD1%xNumPoints = xNumPoints
-  BPD1%kl = 1d0   ! placeholder -- MakeBasis's own ix=1 function is entirely replaced
+  BPD1%kl = 1d20
   BPD1%kr = 1d20
 
   BPD0%NumChannels = NumChannels
@@ -189,15 +199,15 @@ PROGRAM main
      ALLOCATE(OverlapBoxes(BPD%MatrixDim,BPD%MatrixDim,2:NumBoxes-1))
      ALLOCATE(LamBoxes(BPD%MatrixDim,BPD%MatrixDim,2:NumBoxes-1))
      DO iBox = 2,NumBoxes-1
-        BPD%xl = xStart + DBLE(iBox-1)*xDelt
-        BPD%xr = xStart + DBLE(iBox)*xDelt
+        BPD%xl = xStart + (xEnd-xStart)*(DBLE(iBox-1)/DBLE(NumBoxes))**BoxSpacingPower
+        BPD%xr = xStart + (xEnd-xStart)*(DBLE(iBox)/DBLE(NumBoxes))**BoxSpacingPower
         BPD%xPoints = BPD%xl + (BPD%xr-BPD%xl)*xprim
         DO kx = 1,BPD%xNumPoints
            DO lx = 1,LegPoints
               BPD%ux(lx,kx,1:BPD%xDim) = BPD0%ux(lx,kx,1:BPD%xDim)/(BPD%xr-BPD%xl)
            ENDDO
         ENDDO
-        CALL SetAdiabaticPotential(BPD,muLocal,UInterp,PInterp,QInterp)
+        CALL SetAdiabaticPotential(BPD,muLocal,UInterp,PInterp,QInterp,CoulombC)
         ! interior box-to-box boundary: all channels retained, always -- energy-independent
         CALL CalcGamLam(BPD,EIG,NumChannels,NumChannels)
         Gam0Boxes(:,:,iBox) = EIG%Gam0
@@ -254,7 +264,7 @@ PROGRAM main
         ELSE
            Boxes(i)%xl = Boxes(i-1)%xr
         ENDIF
-        Boxes(i)%xr = xStart + i*xDelt
+        Boxes(i)%xr = xStart + (xEnd-xStart)*(DBLE(i)/DBLE(NumBoxes))**BoxSpacingPower
         CALL AllocateBox(Boxes(i))
         CALL InitZeroBox(Boxes(i))
      ENDDO
@@ -280,21 +290,11 @@ PROGRAM main
      CALL GridMaker(BPD1%xPoints,BPD1%xNumPoints,BPD1%xl,BPD1%xr,"quadratic")
      CALL MakeBasis(BPD1)
      BPD1%lam(1:NumChannels) = Leff(1:NumChannels)
-     CALL SetAdiabaticPotential(BPD1,muLocal,UInterp,PInterp,QInterp)
-     ALLOCATE(u1Box1(LegPoints,BPD1%xNumPoints,NumChannels))
-     ALLOCATE(ux1Box1(LegPoints,BPD1%xNumPoints,NumChannels))
-     ALLOCATE(kLeftBox1(NumChannels))
-     IF (UseNeumannBox1) THEN
-        ! Simple, energy-independent "Neumann sum" (B1+B2) box-1 basis, mirroring the
-        ! 2006/2007 adrmatprop.f's own Left=1 approach -- no Robin/Bessel/Coulomb matching
-        ! at all. Intended for use with a very small xMin (near the smallest tabulated R).
-        CALL BuildBox1NeumannBasis(BPD1,u1Box1,ux1Box1,kLeftBox1)
-     ELSE
-        CALL BuildBox1CombinedBasis(BPD1,Leff,reducedmass,EffDim,AlphaFactor,Energy,Threshold, &
-             u1Box1,ux1Box1,kLeftBox1,CoulombC,UInterp,QInterp)
-     ENDIF
-     CALL CalcGamLamBox1(BPD1,EIG,Boxes(1)%NumOpenL,Boxes(1)%NumOpenR,u1Box1,ux1Box1,kLeftBox1)
-     DEALLOCATE(u1Box1,ux1Box1,kLeftBox1)
+     CALL SetAdiabaticPotential(BPD1,muLocal,UInterp,PInterp,QInterp,CoulombC)
+     ! TEST: ordinary Left=2 basis, NumOpenL=0 elimination via the generic
+     ! CalcGamLam/PartitionAndEliminate mechanism -- no special box-1 Robin/Neumann
+     ! basis construction at all (see note at BPD1%Left assignment above).
+     CALL CalcGamLam(BPD1,EIG,Boxes(1)%NumOpenL,Boxes(1)%NumOpenR)
      CALL CombineGam(EIG,Energy)
      ALLOCATE(evalRed(Boxes(1)%betaMax),evecRed(Boxes(1)%betaMax,Boxes(1)%betaMax))
      ALLOCATE(LamooDiag(Boxes(1)%betaMax))
@@ -327,15 +327,15 @@ PROGRAM main
      !---------------------------------------------------------------------
      IF (NumBoxes.GE.2) THEN
         iBox = NumBoxes
-        BPD%xl = xStart + DBLE(iBox-1)*xDelt
-        BPD%xr = xStart + DBLE(iBox)*xDelt
+        BPD%xl = xStart + (xEnd-xStart)*(DBLE(iBox-1)/DBLE(NumBoxes))**BoxSpacingPower
+        BPD%xr = xStart + (xEnd-xStart)*(DBLE(iBox)/DBLE(NumBoxes))**BoxSpacingPower
         BPD%xPoints = BPD%xl + (BPD%xr-BPD%xl)*xprim
         DO kx = 1,BPD%xNumPoints
            DO lx = 1,LegPoints
               BPD%ux(lx,kx,1:BPD%xDim) = BPD0%ux(lx,kx,1:BPD%xDim)/(BPD%xr-BPD%xl)
            ENDDO
         ENDDO
-        CALL SetAdiabaticPotential(BPD,muLocal,UInterp,PInterp,QInterp)
+        CALL SetAdiabaticPotential(BPD,muLocal,UInterp,PInterp,QInterp,CoulombC)
         CALL CalcGamLam(BPD,EIG,Boxes(iBox)%NumOpenL,Boxes(iBox)%NumOpenR)
         CALL CombineGam(EIG,Energy)
         ALLOCATE(evalRed(Boxes(iBox)%betaMax),evecRed(Boxes(iBox)%betaMax,Boxes(iBox)%betaMax))

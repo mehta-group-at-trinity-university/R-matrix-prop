@@ -487,7 +487,15 @@ END MODULE DataStructures
           ! (RK4) from a small R0, deep in the region where Pot(R)->-C0/R is essentially
           ! exact (so the leading-order regular series is a valid IC there), out to
           ! R1=xMin (see CoulombRegularNumeric).
-          R0 = MAX(BPD%xl/100d0, UInterp(mch)%x(1)*2d0)
+          ! R0 previously used MAX(BPD%xl/100,UInterp(mch)%x(1)*2) to stay clear of the
+          ! interpolant's own left domain edge -- but UInterp(mch)%x(1) is the SECOND
+          ! tabulated point (row 1 is dropped in ReadAdiabaticData), 2*that = 1.021e-4,
+          ! which exceeds BPD%xl for any xMin below ~0.0102, making R0>R1 and the RK4
+          ! integration run backward over a near-empty, nearly-degenerate range (confirmed:
+          ! R0=1.021e-4 > R1=xMin=1e-4 in that regime). CoulombRHS now uses the analytic
+          ! series (not the interpolant) for all R<0.01 regardless, so R0 no longer needs
+          ! to respect the interpolant's domain at all -- just stay safely below xMin.
+          R0 = MIN(BPD%xl*0.01d0, 1d-6)
           CALL CoulombRegularNumeric(mu,CoulombC(mch),EE,mch,BPD%NumChannels,UInterp,QInterp,R0,BPD%xl,uval,uderiv)
           kLeft = uderiv/uval
        ENDIF
@@ -588,10 +596,10 @@ END MODULE DataStructures
     R = R0
     h = (R1-R0)/DBLE(nsteps)
     DO istep = 1,nsteps
-       CALL CoulombRHS(R,        y,            mu,EE,mch,NCh,UInterp,QInterp,k1)
-       CALL CoulombRHS(R+0.5d0*h,y+0.5d0*h*k1, mu,EE,mch,NCh,UInterp,QInterp,k2)
-       CALL CoulombRHS(R+0.5d0*h,y+0.5d0*h*k2, mu,EE,mch,NCh,UInterp,QInterp,k3)
-       CALL CoulombRHS(R+h,      y+h*k3,       mu,EE,mch,NCh,UInterp,QInterp,k4)
+       CALL CoulombRHS(R,        y,            mu,C0,EE,mch,NCh,UInterp,QInterp,k1)
+       CALL CoulombRHS(R+0.5d0*h,y+0.5d0*h*k1, mu,C0,EE,mch,NCh,UInterp,QInterp,k2)
+       CALL CoulombRHS(R+0.5d0*h,y+0.5d0*h*k2, mu,C0,EE,mch,NCh,UInterp,QInterp,k3)
+       CALL CoulombRHS(R+h,      y+h*k3,       mu,C0,EE,mch,NCh,UInterp,QInterp,k4)
        y = y + (h/6d0)*(k1 + 2d0*k2 + 2d0*k3 + k4)
        R = R + h
     ENDDO
@@ -599,19 +607,28 @@ END MODULE DataStructures
     uderiv = y(2)
   END SUBROUTINE CoulombRegularNumeric
   !****************************************************************************************************
-  SUBROUTINE CoulombRHS(R,y,mu,EE,mch,NCh,UInterp,QInterp,dydt)
+  ! Below RcutoffAnalytic, use the exact small-R series (AnalyticComboNearOrigin) instead of
+  ! the tabulated-data spline interpolation, which has significant Runge-phenomenon ringing
+  ! there (confirmed: 10-31% errors in combo(R)=2*mu*U+Q for R<0.005, vanishing by R~0.01).
+  SUBROUTINE CoulombRHS(R,y,mu,C0,EE,mch,NCh,UInterp,QInterp,dydt)
     USE InterpType
     IMPLICIT NONE
-    DOUBLE PRECISION, INTENT(in) :: R, y(2), mu, EE
+    DOUBLE PRECISION, INTENT(in) :: R, y(2), mu, C0, EE
     INTEGER, INTENT(in) :: mch, NCh
     TYPE(InterpolatingFunction), INTENT(in) :: UInterp(NCh)
     TYPE(InterpolatingMatrix), INTENT(in) :: QInterp
     DOUBLE PRECISION, INTENT(out) :: dydt(2)
+    DOUBLE PRECISION, EXTERNAL :: AnalyticComboNearOrigin
+    DOUBLE PRECISION, PARAMETER :: RcutoffAnalytic = 0.01d0
     DOUBLE PRECISION Pot
     DOUBLE PRECISION QM(QInterp%nr,QInterp%nc)
 
-    QM = InterpolatedMatrix(R,QInterp)
-    Pot = Interpolated(R,UInterp(mch)) + QM(mch,mch)/(2d0*mu)
+    IF (R.LT.RcutoffAnalytic) THEN
+       Pot = AnalyticComboNearOrigin(R,mu,C0)/(2d0*mu)
+    ELSE
+       QM = InterpolatedMatrix(R,QInterp)
+       Pot = Interpolated(R,UInterp(mch)) + QM(mch,mch)/(2d0*mu)
+    ENDIF
     dydt(1) = y(2)
     dydt(2) = -(1d0/R)*y(2) - 2d0*mu*(EE-Pot)*y(1)
   END SUBROUTINE CoulombRHS
@@ -967,12 +984,17 @@ END MODULE DataStructures
   CONTAINS
     SUBROUTINE CalcK(B,BPD,SD,mu,d,alpha,EE,Eth)
       IMPLICIT NONE
+      ! TEMP diagnostic toggle: use order=0 (plain sin/cos, matching legacy
+      ! adrmatprop.f's outer matching for the dimer-threshold channel) instead
+      ! of BPD%lam(i)=Leff in the outer hyperrjry call only -- BuildBox1CombinedBasis's
+      ! own Leff-based near-origin regularity matching is untouched.
+      LOGICAL, PARAMETER :: UseOuterOrderZero = .FALSE.
       TYPE(BoxData), INTENT(in) :: B
       TYPE(BPData), INTENT(in) :: BPD
       TYPE(ScatData) :: SD
       DOUBLE PRECISION mu, EE,rm,d,alpha
       DOUBLE PRECISION, ALLOCATABLE :: s(:),c(:),sp(:),cp(:)
-      DOUBLE PRECISION, ALLOCATABLE :: Imat(:,:),Jmat(:,:)
+      DOUBLE PRECISION, ALLOCATABLE :: Rmat(:,:),tmp1(:,:),tmp2(:,:)
       DOUBLE PRECISION rhypj,rhypy,rhypjp,rhypyp
       DOUBLE PRECISION k(BPD%NumChannels),Eth(BPD%NumChannels)
       INTEGER i,j,no,nw,nc,beta
@@ -998,10 +1020,14 @@ END MODULE DataStructures
          STOP
       ENDIF
 
-      ALLOCATE(s(no),c(no),Imat(no,no),Jmat(no,no))
+      ALLOCATE(s(no),c(no))
       ALLOCATE(sp(no),cp(no))
       DO i = 1,no
-         CALL hyperrjry(INT(d),alpha,BPD%lam(i),k(i)*rm,rhypj,rhypy,rhypjp,rhypyp)
+         IF (UseOuterOrderZero) THEN
+            CALL hyperrjry(INT(d),alpha,0d0,k(i)*rm,rhypj,rhypy,rhypjp,rhypyp)
+         ELSE
+            CALL hyperrjry(INT(d),alpha,BPD%lam(i),k(i)*rm,rhypj,rhypy,rhypjp,rhypyp)
+         ENDIF
          !s(i) = dsqrt(mu)*rhypj  ! the factor of sqrt(mu) is for energy normalization
          !c(i) = -dsqrt(mu)*rhypy ! the factor of sqrt(mu) is for energy normalization
          !sp(i) = k(i)*dsqrt(mu)*rhypjp
@@ -1012,31 +1038,48 @@ END MODULE DataStructures
           cp(i) = -k(i)*1d0/dsqrt(Pi*k(i))*rhypyp
 
       ENDDO
-      Imat=0d0
-      Jmat=0d0
+      ! K-matrix construction now matches adrmatprop.f (2006/2007 legacy code) exactly:
+      ! build the explicit surface R-matrix (PLUS sign: R(i,j)=+sum_beta Zf*Zf/bf,
+      ! Baluja et al's own convention -- our earlier Imat/Jmat eigenchannel formula used
+      ! an equivalent but structurally different combination), then combine with the
+      ! outer functions via tmp1=f*delta+fp*R, tmp2=g*delta+gp*R, K=tmp1*tmp2^-1, where
+      ! legacy's f (cosine-like, irregular) is our c, and legacy's g (sine-like, regular)
+      ! is our s (verified against both codes' own outer-matching formulas: legacy's
+      ! f~cos(kR), g~sin(kR); ours has s~sin-like via rhypj, c~cos-like via -rhypy).
+      ! The relative PLUS sign on cp*R/sp*R (not MINUS) is deliberate -- adrmatprop.f's
+      ! own comment flags this as the fix needed to reconcile Baluja et al's convention
+      ! against the "Orange Review" (Aymar/Greene/Luc-Koenig)'s, and we're matching
+      ! Baluja et al here.
+      ALLOCATE(Rmat(no,no),tmp1(no,no),tmp2(no,no))
+      Rmat=0d0
       DO i=1,no
-         DO beta=1,no
-            Imat(i,beta) = (B%Zf(i,beta)*cp(i) - B%Zfp(i,beta)*c(i))/(s(i)*cp(i)-c(i)*sp(i))
-            Jmat(i,beta) = (B%Zf(i,beta)*sp(i) - B%Zfp(i,beta)*s(i))/(c(i)*sp(i)-s(i)*cp(i))
-         ENDDO
-      ENDDO
-      !Jmat=Imat !use this to test if the matrix inverse is working
-      CALL SqrMatInv(Imat, no)
-      SD%K = MATMUL(Jmat,Imat)
-
-      DO i=1,B%NumOpenR
-         DO j=1,B%NumOpenR
-            SD%R(i,j)=0.0d0
-            DO beta = 1, B%NumOpenR
-               SD%R(i,j) = SD%R(i,j) - B%Zf(i,beta)*B%Zf(j,beta)/B%bf(beta) !
+         DO j=1,no
+            DO beta=1,no
+               Rmat(i,j) = Rmat(i,j) + B%Zf(i,beta)*B%Zf(j,beta)/B%bf(beta)
             ENDDO
          ENDDO
       ENDDO
 
-      !call sqrmatinv(BB%Zfp,BB%NumOpenR)  This gives the same result as the code segment  executed above
-      !SD%R = matmul(BB%Zf,BB%Zfp)
+      tmp1=0d0
+      tmp2=0d0
+      DO i=1,no
+         DO j=1,no
+            tmp1(i,j) = cp(i)*Rmat(i,j)
+            tmp2(i,j) = sp(i)*Rmat(i,j)
+         ENDDO
+         tmp1(i,i) = tmp1(i,i) + c(i)
+         tmp2(i,i) = tmp2(i,i) + s(i)
+      ENDDO
+      CALL SqrMatInv(tmp2, no)
+      SD%K = MATMUL(tmp1,tmp2)
 
-      DEALLOCATE(s,c,Imat,Jmat,sp,cp)
+      DO i=1,B%NumOpenR
+         DO j=1,B%NumOpenR
+            SD%R(i,j) = Rmat(i,j)
+         ENDDO
+      ENDDO
+
+      DEALLOCATE(s,c,sp,cp,Rmat,tmp1,tmp2)
     END SUBROUTINE CalcK
 
   END MODULE Scattering
@@ -1237,3 +1280,27 @@ SUBROUTINE BoxMatch(BA, BB, BPD, evalRed, evecRed, LamooDiag, dim, alphafact)
   DEALLOCATE(temp0)
   DEALLOCATE(ZT)
 END SUBROUTINE BoxMatch
+!****************************************************************************************************
+! Analytic small-R series for combo(R) = 2*mu*U(R) + Q(R), for a genuine two-body
+! bound-pair (Coulomb-like -C0/R) channel of the 3-body delta-function problem.
+! Derived from the Kartavtsev-Malykh-Sofianos transcendental equation
+! q*Tanh[phi*q] = b*R (a2=1 convention, phi=Pi/6), inverted as a series in R and
+! substituted into the exact rational Qmat(1,1) formula (both done symbolically
+! in Wolfram, not by hand). b relates to the already-computed CoulombC(mch)=C0
+! via b = 2*mu*phi*C0 (verified: matches -C0/R exactly at leading order).
+! Cross-checked against the tabulated Uad.dat/Qmat.dat data in the region
+! (R>0.02) where that data is itself reliable -- matches to <0.001%. Exists
+! because the cubic-spline interpolation of the tabulated data has significant
+! Runge-phenomenon ringing for R below ~0.005-0.01 (confirmed directly against
+! a fresh root-find of the transcendental equation), which corrupts
+! CoulombRegularNumeric's RK4 integration since it starts as low as R0~2e-6.
+DOUBLE PRECISION FUNCTION AnalyticComboNearOrigin(R,mu,C0)
+  IMPLICIT NONE
+  DOUBLE PRECISION, INTENT(in) :: R, mu, C0
+  DOUBLE PRECISION, PARAMETER :: phi = 0.523598775598298873d0  ! Pi/6
+  DOUBLE PRECISION b
+
+  b = 2d0*mu*phi*C0
+  AnalyticComboNearOrigin = -b/(phi*R) + b**2*(phi**2-15d0)/45d0 &
+       + b**3*phi*(phi**2-4d0)*R/45d0 + 4d0*b**4*phi**4*R**2/405d0
+END FUNCTION AnalyticComboNearOrigin
