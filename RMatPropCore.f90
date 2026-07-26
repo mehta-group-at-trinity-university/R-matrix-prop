@@ -1157,6 +1157,96 @@ SUBROUTINE GridMaker(grid,numpts,E1,E2,scale)
   ENDIF
 END SUBROUTINE GridMaker
 !****************************************************************************************************
+!****************************************************************************************************
+SUBROUTINE BoxMatchEigensystem(N,G,LDG,L,LDL,Nkeep,DvalKept,DikeepOut,Dvec,maxImagFrac)
+  ! Solves the box-matching generalized eigenvalue problem G*v=lambda*L*v (Burke thesis,
+  ! Eqs. 3.13-3.14) and selects the Nkeep=NumOpenR PHYSICAL log-derivatives out of the full
+  ! N=2*NumOpenL+NumOpenR spectrum. Unlike PartitionAndEliminate's (Goo,Lamoo) pencil -- where
+  ! Lamoo is manifestly diagonal and positive-definite by construction (Burke Eq. 3.11: "only
+  ! m_P non-zero elements, all equal to one"), guaranteeing real eigenvalues whenever Goo stays
+  ! symmetric -- THIS pencil carries no such guarantee: it's built by stacking solution
+  ! matrices (Z, Z') to encode a continuity/matching condition, not a symmetric bilinear form,
+  ! and Burke's own derivation only promises that exactly Nkeep of the N eigenvalues are
+  ! physical ("non-infinite"); the rest are spurious by construction.
+  !
+  ! The OLD approach (still in RMatPropCore.f90's git history) classified "physical" by an
+  ! absolute-magnitude window [1e-12,1e12] on the real part alone, discarding the imaginary
+  ! part unconditionally (see lib/matrix_stuff.f90's Mydggev). That crashed for some
+  ! (NumChannels,RMax) combinations: a spurious mode's magnitude landed inside the window (or
+  ! a genuinely complex spurious pair's real part did), so BB%bf (sized exactly NumOpenR)
+  ! overflowed. Since the expected COUNT is known exactly in advance (Nkeep=NumOpenR), we
+  ! instead take the Nkeep SMALLEST-|eigenvalue| modes directly -- this can't overflow by
+  ! construction. A spurious mode is legitimately allowed to be complex; a physical log-
+  ! derivative must be real, so maxImagFrac reports the largest |Im(lambda)/Re(lambda)| found
+  ! among the KEPT modes only (never checked among the discarded ones) for the caller to
+  ! verify is negligible.
+  IMPLICIT NONE
+  INTEGER, INTENT(in) :: N, LDG, LDL, Nkeep
+  DOUBLE PRECISION, INTENT(in) :: G(LDG,N), L(LDL,N)
+  DOUBLE PRECISION, INTENT(out) :: DvalKept(Nkeep)
+  INTEGER, INTENT(out) :: DikeepOut(Nkeep)
+  DOUBLE PRECISION, INTENT(out) :: Dvec(N,N)
+  DOUBLE PRECISION, INTENT(out) :: maxImagFrac
+
+  DOUBLE PRECISION, ALLOCATABLE :: alphar(:), alphai(:), betaV(:), work(:), VL(:,:)
+  DOUBLE PRECISION, ALLOCATABLE :: GL(:,:), LL(:,:), modulus(:)
+  INTEGER, ALLOCATABLE :: order(:)
+  INTEGER lwork, info, i, jbest, itmp
+  DOUBLE PRECISION, PARAMETER :: betaEps = 1d-14
+
+  ALLOCATE(alphar(N),alphai(N),betaV(N),GL(LDG,N),LL(LDL,N),VL(1,N))
+  GL = G
+  LL = L
+  ALLOCATE(work(1))
+  lwork = -1
+  CALL dggev('N','V',N,GL,LDG,LL,LDL,alphar,alphai,betaV,VL,1,Dvec,N,work,lwork,info)
+  lwork = 2*INT(work(1))
+  DEALLOCATE(work)
+  ALLOCATE(work(lwork))
+  GL = G
+  LL = L
+  CALL dggev('N','V',N,GL,LDG,LL,LDL,alphar,alphai,betaV,VL,1,Dvec,N,work,lwork,info)
+  DEALLOCATE(work,GL,LL,VL)
+
+  ALLOCATE(modulus(N),order(N))
+  DO i=1,N
+     order(i) = i
+     IF (ABS(betaV(i)).GE.betaEps) THEN
+        modulus(i) = DSQRT(alphar(i)**2+alphai(i)**2)/ABS(betaV(i))
+     ELSE
+        modulus(i) = 1d300   ! genuinely infinite eigenvalue -- sorts to the discarded end
+     ENDIF
+  ENDDO
+
+  ! Selection sort for the Nkeep smallest -- N is at most a few tens (2*NumOpenL+NumOpenR),
+  ! so O(N^2) is negligible.
+  DO i=1,Nkeep
+     jbest = i
+     DO itmp=i+1,N
+        IF (modulus(order(itmp)).LT.modulus(order(jbest))) jbest = itmp
+     ENDDO
+     itmp = order(i)
+     order(i) = order(jbest)
+     order(jbest) = itmp
+  ENDDO
+
+  maxImagFrac = 0d0
+  DO i=1,Nkeep
+     DikeepOut(i) = order(i)
+     IF (ABS(betaV(order(i))).LT.betaEps) THEN
+        WRITE(6,*) "BoxMatchEigensystem: selected a formally-infinite mode as physical -- ", &
+             "Nkeep does not match the pencil's actual structure"
+        STOP
+     ENDIF
+     DvalKept(i) = alphar(order(i))/betaV(order(i))
+     IF (ABS(DvalKept(i)).GT.1d-300) THEN
+        maxImagFrac = MAX(maxImagFrac, ABS(alphai(order(i))/betaV(order(i))/DvalKept(i)))
+     ENDIF
+  ENDDO
+
+  DEALLOCATE(alphar,alphai,betaV,modulus,order)
+END SUBROUTINE BoxMatchEigensystem
+!****************************************************************************************************
 SUBROUTINE BoxMatch(BA, BB, BPD, evalRed, evecRed, LamooDiag, dim, alphafact)
   ! Builds BB%Z/BB%ZP directly from PartitionAndEliminate's reduced (open-DOF-only)
   ! eval/evec, instead of extracting them from a full dense EIG%eval/EIG%evec via the
@@ -1167,8 +1257,11 @@ SUBROUTINE BoxMatch(BA, BB, BPD, evalRed, evecRed, LamooDiag, dim, alphafact)
   ! OpenIdx), matching this loop's i=1..NumOpenL / i=1..NumOpenR structure directly.
   ! The normalization Nbeta is likewise just the Lamoo-weighted quadratic form, since
   ! the full Lam matrix is zero everywhere except at the open (boundary-retained) DOF.
-  ! Everything below this extraction (the box-to-box matching via its own Mydggev call)
-  ! is unchanged.
+  ! The box-to-box matching below (Burke thesis Eqs. 3.13-3.14) uses BoxMatchEigensystem,
+  ! not the plain Mydggev+magnitude-window classification this used to have -- see that
+  ! subroutine's header for why (that pencil, unlike (Goo,Lamoo) above, has no symmetric-
+  ! definite guarantee, so the count of physical modes must be selected by rank, not by an
+  ! absolute-magnitude cutoff).
   USE DataStructures
   IMPLICIT NONE
   TYPE(BPData), INTENT(in) :: BPD
@@ -1181,7 +1274,7 @@ SUBROUTINE BoxMatch(BA, BB, BPD, evalRed, evecRed, LamooDiag, dim, alphafact)
   DOUBLE PRECISION, ALLOCATABLE :: BigZA(:,:), BigZB(:,:),Dvec(:,:)
   DOUBLE PRECISION, ALLOCATABLE :: Dval(:)
   INTEGER, ALLOCATABLE :: Dikeep(:)
-  DOUBLE PRECISION NewNorm, dim, alphafact, absd
+  DOUBLE PRECISION NewNorm, dim, alphafact, maxImagFrac
   INTEGER i,j,k,beta,betaprime,nch,mch!,betamax
 
   BB%b = evalRed
@@ -1217,10 +1310,10 @@ SUBROUTINE BoxMatch(BA, BB, BPD, evalRed, evecRed, LamooDiag, dim, alphafact)
   temp0 = 0d0
   temp0 = MATMUL(TRANSPOSE(ZT),BB%Z)
 
-  ALLOCATE(Dikeep(BB%betaMax + BB%NumOpenL))
+  ALLOCATE(Dikeep(BB%NumOpenR))
   ALLOCATE(BigZA(BB%NumOpenL + BB%betaMax,BB%NumOpenL+BB%betaMax),BigZB(BB%NumOpenL+BB%betaMax,BB%NumOpenL+BB%betaMax)) !
   ALLOCATE(Dvec(BB%NumOpenL+BB%betaMax,BB%NumOpenL+BB%betaMax))
-  ALLOCATE(Dval(BB%NumOpenL+BB%betaMax))
+  ALLOCATE(Dval(BB%NumOpenR))
 
   Dvec=0d0
   BigZA=0d0
@@ -1247,15 +1340,18 @@ SUBROUTINE BoxMatch(BA, BB, BPD, evalRed, evecRed, LamooDiag, dim, alphafact)
     ENDDO
   ENDDO
 
-  CALL Mydggev(BB%NumOpenL+BB%betaMax,BigZA,BB%NumOpenL+BB%betaMax,BigZB,BB%NumOpenL+BB%betaMax,Dval,Dvec) !
-  j=1
-  DO i = 1,BB%NumOpenL+BB%betaMax
-    absd=ABS(Dval(i))
-    IF((absd.GE.1d-12).and.(absd.lt.1d12)) THEN
-      Dikeep(j)=i
-      BB%bf(j)=Dval(i)
-      j=j+1
-    ENDIF
+  ! See BoxMatchEigensystem's own header comment for why this replaces a plain Mydggev call
+  ! plus an absolute-magnitude classification window: the expected number of physical
+  ! ("finite") log-derivatives is known exactly in advance (BB%NumOpenR), so we select the
+  ! BB%NumOpenR smallest-|eigenvalue| modes directly instead of guessing a magnitude cutoff.
+  CALL BoxMatchEigensystem(BB%NumOpenL+BB%betaMax,BigZA,BB%NumOpenL+BB%betaMax,BigZB,BB%NumOpenL+BB%betaMax, &
+       BB%NumOpenR,Dval,Dikeep,Dvec,maxImagFrac)
+  IF (maxImagFrac.GT.1d-6) THEN
+     WRITE(6,'(A,1P,E12.4)') " BoxMatch WARNING: a KEPT (physical) log-derivative has non-negligible " // &
+          "imaginary part, |Im/Re| = ", maxImagFrac
+  ENDIF
+  DO j=1,BB%NumOpenR
+     BB%bf(j) = Dval(j)
   ENDDO
 
   DO beta=1,BB%NumOpenR

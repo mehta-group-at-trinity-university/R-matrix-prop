@@ -1,0 +1,12 @@
+DataDir
+3bodydata_delta_5ch
+
+Order  xNumPoints  LegPoints
+5      10          10
+
+NumBoxes  xMin  xMax
+200       0.0d0 200.0d0
+
+Emin  Emax  NumEnergies
+1.0d-3 2.0d0 40
+quadratic

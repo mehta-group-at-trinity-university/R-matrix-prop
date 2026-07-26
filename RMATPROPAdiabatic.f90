@@ -40,14 +40,14 @@ PROGRAM main
   TYPE(ScatData) SD
   DOUBLE PRECISION, ALLOCATABLE :: xprim(:)
   ! Cached energy-independent Gam0/Overlap/Lam for interior boxes 2..NumBoxes-1 (built
-  ! once, reused every energy via CombineGam). Box 1 and the last box are rebuilt fresh
-  ! each energy: box 1 because Part B's log-derivative BC will be energy-dependent, the
-  ! last box because NumOpenR=NumOpenChannels can change with energy.
+  ! once, reused every energy via CombineGam). The last box is rebuilt fresh each energy,
+  ! since its NumOpenR=NumOpenChannels can change with energy.
   DOUBLE PRECISION, ALLOCATABLE :: Gam0Boxes(:,:,:), OverlapBoxes(:,:,:), LamBoxes(:,:,:)
-  ! Box 1's per-channel, energy-dependent log-derivative-combined boundary basis (see
-  ! BuildBox1CombinedBasis/CalcGamLamBox1 in RMatPropCore.f90).
-  DOUBLE PRECISION, ALLOCATABLE :: u1Box1(:,:,:), ux1Box1(:,:,:)
-  DOUBLE PRECISION, ALLOCATABLE :: kLeftBox1(:)
+  ! Cached energy-independent Gam0/Overlap/Lam for box 1 (only when NumBoxes>=2, i.e. box 1
+  ! is NOT simultaneously the last box -- see the caching block before the energy loop and
+  ! its use inside the loop for why NumBoxes==1 can't use this and must rebuild box 1 fresh
+  ! every energy instead).
+  DOUBLE PRECISION, ALLOCATABLE :: Gam0Box1(:,:), OverlapBox1(:,:), LamBox1(:,:)
   DOUBLE PRECISION, ALLOCATABLE :: evalRed(:), evecRed(:,:), LamooDiag(:)
   DOUBLE PRECISION, ALLOCATABLE :: Threshold(:), Leff(:), CoulombC(:)
   TYPE(InterpolatingFunction), ALLOCATABLE :: UInterp(:)
@@ -55,8 +55,18 @@ PROGRAM main
   DOUBLE PRECISION muLocal, alpha, ddim
   DOUBLE PRECISION Emin, Emax, qOurs, Kelem, rawDelta, delta, prevDelta
   INTEGER NumDataPoints, NumOpenChannels, xNumPoints, LegPointsLocal
-  INTEGER i, iBox, lx, kx, NumEnergies, ie, nBranch, PhaseFile, KMatFile
+  INTEGER i, iBox, lx, kx, NumEnergies, ie, nBranch, PhaseFile, KMatFile, RecombFile
   LOGICAL havePrevDelta
+  ! Full open-channel S-matrix (Cayley transform of SD%K, S=(1-iK)^-1(1+iK)), used to test
+  ! McGuire's exact-elastic-unitarity result for the delta-function 3-body problem:
+  ! 1-|S(1,1)|^2 (total probability the incident dimer+atom channel scatters into any other
+  ! open channel -- i.e. 3-body recombination/breakup) must vanish EXACTLY for the true
+  ! solution at every energy, for any number of channels. A nonzero numerical value is a
+  ! finite-channel-count/finite-RMax truncation artifact that should shrink as NumChannels
+  ! (and RMax, for small Energy) increase -- see AnalyticComboNearOrigin's neighbor note and
+  ! McGuire, J. Math. Phys. 5, 622 (1964).
+  COMPLEX*16, ALLOCATABLE :: Amat(:,:), Smat(:,:)
+  DOUBLE PRECISION recombProb
   ! Box-boundary spacing power: 1.0 = linear (uniform box widths), 2.0 = quadratic
   ! (clusters more/narrower boxes near xStart). BoxEdge(i) = xStart + (xEnd-xStart)*(i/NumBoxes)^BoxSpacingPower.
   DOUBLE PRECISION, PARAMETER :: BoxSpacingPower = 1.0d0
@@ -158,6 +168,12 @@ PROGRAM main
   KMatFile = 51
   OPEN(unit=KMatFile,file='KMatrixFull.dat',status='replace')
 
+  RecombFile = 52
+  OPEN(unit=RecombFile,file='Recombination.dat',status='replace')
+  WRITE(RecombFile,'(A)') '# Energy  NumOpenChannels  1-|S(1,1)|^2  (McGuire exact-unitarity test: should -> 0)'
+  WRITE(RecombFile,'(A)') '@    xaxis label "Energy"'
+  WRITE(RecombFile,'(A)') '@    yaxis label "1 - |S11|^2"'
+
   !---------------------------------------------------------------------
   ! ONE-TIME setup (energy-independent): primitive basis BPD0 on [0,1],
   ! BPD1's allocation (its geometry/basis is rebuilt fresh each energy inside
@@ -228,6 +244,32 @@ PROGRAM main
      ENDDO
   ENDIF
 
+  !---------------------------------------------------------------------
+  ! Box 1's basis (geometry, MakeBasis, SetAdiabaticPotential, CalcGamLam) is
+  ! energy-independent -- same as the interior boxes above -- now that it uses the
+  ! ordinary Left=2/NumOpenL=0 elimination mechanism instead of the old energy-dependent
+  ! Robin-matched basis. The only exception is NumBoxes==1, where box 1 doubles as the
+  ! last box and its NumOpenR=NumOpenChannels genuinely changes with energy (see the
+  ! NumBoxes==1 branch inside the energy loop, which rebuilds box 1 fresh every energy
+  ! exactly as before).
+  !---------------------------------------------------------------------
+  IF (NumBoxes.GE.2) THEN
+     ALLOCATE(Gam0Box1(BPD%MatrixDim,BPD%MatrixDim))
+     ALLOCATE(OverlapBox1(BPD%MatrixDim,BPD%MatrixDim))
+     ALLOCATE(LamBox1(BPD%MatrixDim,BPD%MatrixDim))
+     CALL AllocateBPD(BPD1)
+     BPD1%xl = xStart
+     BPD1%xr = xStart + (xEnd-xStart)*(1d0/DBLE(NumBoxes))**BoxSpacingPower
+     CALL GridMaker(BPD1%xPoints,BPD1%xNumPoints,BPD1%xl,BPD1%xr,"quadratic")
+     CALL MakeBasis(BPD1)
+     BPD1%lam(1:NumChannels) = Leff(1:NumChannels)
+     CALL SetAdiabaticPotential(BPD1,muLocal,UInterp,PInterp,QInterp,CoulombC)
+     CALL CalcGamLam(BPD1,EIG,0,NumChannels)
+     Gam0Box1 = EIG%Gam0
+     OverlapBox1 = EIG%Overlap
+     LamBox1 = EIG%Lam
+  ENDIF
+
   havePrevDelta = .FALSE.
 
   DO ie = 1,NumEnergies
@@ -289,32 +331,44 @@ PROGRAM main
      CALL AllocateScat(SD,NumChannels)
 
      !---------------------------------------------------------------------
-     ! Box 1: rebuilt fully fresh every energy (regularity basis at xMin).
-     ! Its left-boundary (ix=1) basis function is, per channel, an exact
-     ! log-derivative (Robin) combination of Left=2's two independent boundary
-     ! functions -- BuildBox1CombinedBasis/CalcGamLamBox1 -- matched analytically
-     ! to the true regular solution at R=xMin, which is genuinely energy-dependent
-     ! through k(channel) and so must be rebuilt every energy.
+     ! Box 1: NumBoxes>=2 reuses the Gam0Box1/OverlapBox1/LamBox1 cached once before the
+     ! energy loop (BPD1 itself is also already allocated/built there and stays live for
+     ! the whole run) -- just the cheap CombineGam recombination plus the linear algebra
+     ! (PartitionAndEliminate/BoxMatch), exactly mirroring the interior-box pattern below.
+     ! NumBoxes==1 is the one case that can't be cached: box 1 doubles as the last box, so
+     ! its NumOpenR=NumOpenChannels genuinely changes with energy and it must be rebuilt
+     ! fully fresh every time (matching the last-box branch's own NumOpenR-changes-with-
+     ! energy reasoning).
      !---------------------------------------------------------------------
-     CALL AllocateBPD(BPD1)
-     BPD1%xl = Boxes(1)%xl
-     BPD1%xr = Boxes(1)%xr
-     CALL GridMaker(BPD1%xPoints,BPD1%xNumPoints,BPD1%xl,BPD1%xr,"quadratic")
-     CALL MakeBasis(BPD1)
-     BPD1%lam(1:NumChannels) = Leff(1:NumChannels)
-     CALL SetAdiabaticPotential(BPD1,muLocal,UInterp,PInterp,QInterp,CoulombC)
-     ! TEST: ordinary Left=2 basis, NumOpenL=0 elimination via the generic
-     ! CalcGamLam/PartitionAndEliminate mechanism -- no special box-1 Robin/Neumann
-     ! basis construction at all (see note at BPD1%Left assignment above).
-     CALL CalcGamLam(BPD1,EIG,Boxes(1)%NumOpenL,Boxes(1)%NumOpenR)
-     CALL CombineGam(EIG,Energy)
-     ALLOCATE(evalRed(Boxes(1)%betaMax),evecRed(Boxes(1)%betaMax,Boxes(1)%betaMax))
-     ALLOCATE(LamooDiag(Boxes(1)%betaMax))
-     CALL PartitionAndEliminate(BPD1,EIG,Boxes(1)%NumOpenL,Boxes(1)%NumOpenR,evalRed,evecRed,LamooDiag)
-     CALL BoxMatch(Bnull, Boxes(1), BPD1, evalRed, evecRed, LamooDiag, EffDim, AlphaFactor)
-     DEALLOCATE(evalRed,evecRed,LamooDiag)
-     ! BPD1 stays allocated past here -- CalcK still needs BPD1%xr/%lam below when
-     ! NumBoxes==1 (see note there); deallocated after that call instead.
+     IF (NumBoxes.GE.2) THEN
+        EIG%Gam0 = Gam0Box1
+        EIG%Overlap = OverlapBox1
+        EIG%Lam = LamBox1
+        CALL CombineGam(EIG,Energy)
+        ALLOCATE(evalRed(Boxes(1)%betaMax),evecRed(Boxes(1)%betaMax,Boxes(1)%betaMax))
+        ALLOCATE(LamooDiag(Boxes(1)%betaMax))
+        CALL PartitionAndEliminate(BPD1,EIG,Boxes(1)%NumOpenL,Boxes(1)%NumOpenR,evalRed,evecRed,LamooDiag)
+        CALL BoxMatch(Bnull, Boxes(1), BPD1, evalRed, evecRed, LamooDiag, EffDim, AlphaFactor)
+        DEALLOCATE(evalRed,evecRed,LamooDiag)
+     ELSE
+        CALL AllocateBPD(BPD1)
+        BPD1%xl = Boxes(1)%xl
+        BPD1%xr = Boxes(1)%xr
+        CALL GridMaker(BPD1%xPoints,BPD1%xNumPoints,BPD1%xl,BPD1%xr,"quadratic")
+        CALL MakeBasis(BPD1)
+        BPD1%lam(1:NumChannels) = Leff(1:NumChannels)
+        CALL SetAdiabaticPotential(BPD1,muLocal,UInterp,PInterp,QInterp,CoulombC)
+        CALL CalcGamLam(BPD1,EIG,Boxes(1)%NumOpenL,Boxes(1)%NumOpenR)
+        CALL CombineGam(EIG,Energy)
+        ALLOCATE(evalRed(Boxes(1)%betaMax),evecRed(Boxes(1)%betaMax,Boxes(1)%betaMax))
+        ALLOCATE(LamooDiag(Boxes(1)%betaMax))
+        CALL PartitionAndEliminate(BPD1,EIG,Boxes(1)%NumOpenL,Boxes(1)%NumOpenR,evalRed,evecRed,LamooDiag)
+        CALL BoxMatch(Bnull, Boxes(1), BPD1, evalRed, evecRed, LamooDiag, EffDim, AlphaFactor)
+        DEALLOCATE(evalRed,evecRed,LamooDiag)
+     ENDIF
+     ! For NumBoxes==1, BPD1 stays allocated past here -- CalcK still needs BPD1%xr/%lam
+     ! below (see note there); deallocated after that call instead. For NumBoxes>=2, BPD1
+     ! is persistent (built once before the loop) and is NOT deallocated per-energy at all.
 
      !---------------------------------------------------------------------
      ! Interior boxes 2..NumBoxes-1: reuse the cached Gam0/Overlap/Lam built
@@ -364,10 +418,12 @@ PROGRAM main
      ! feeding hyperrjry an x=k*0=0 argument and crashing bessjy).
      IF (NumBoxes.EQ.1) THEN
         CALL CalcK(Boxes(NumBoxes),BPD1,SD,reducedmass,EffDim,AlphaFactor,Energy,Threshold)
+        CALL DeAllocateBPD(BPD1)  ! rebuilt fresh every energy in this branch -- see above
      ELSE
         CALL CalcK(Boxes(NumBoxes),BPD,SD,reducedmass,EffDim,AlphaFactor,Energy,Threshold)
+        ! BPD1 is persistent here (built once before the loop) -- torn down once after the
+        ! loop instead, alongside BPD0/EIG/Gam0Boxes.
      ENDIF
-     CALL DeAllocateBPD(BPD1)
 
      !---------------------------------------------------------------------
      ! Diagnostic: full K-matrix dump for the all-channels-open diagonal-
@@ -381,6 +437,31 @@ PROGRAM main
            WRITE(KMatFile,'(1P,20E20.12)') SD%K(i,1:NumOpenChannels)
         ENDDO
      ENDIF
+
+     !---------------------------------------------------------------------
+     ! McGuire elastic-unitarity test: S = (1-iK)^-1(1+iK) (Cayley transform of the
+     ! real, energy-normalized, symmetric open-channel K-matrix SD%K, dimension
+     ! NumOpenChannels x NumOpenChannels -- see CalcK), then 1-|S(1,1)|^2. Channel 1 is
+     ! always the dimer+atom elastic channel here, so this is exactly the incident-
+     ! channel recombination/breakup probability. Computed at every energy (trivially
+     ! ~0 to machine precision when NumOpenChannels=1, which is itself a useful sanity
+     ! check on this Cayley-transform code before trusting it in the genuinely
+     ! multi-open-channel regime above the 3-body threshold).
+     !---------------------------------------------------------------------
+     ALLOCATE(Amat(NumOpenChannels,NumOpenChannels),Smat(NumOpenChannels,NumOpenChannels))
+     Amat = (0d0,0d0)
+     Smat = (0d0,0d0)
+     DO i = 1,NumOpenChannels
+        Amat(i,1:NumOpenChannels) = -(0d0,1d0)*SD%K(i,1:NumOpenChannels)
+        Smat(i,1:NumOpenChannels) = (0d0,1d0)*SD%K(i,1:NumOpenChannels)
+        Amat(i,i) = Amat(i,i) + (1d0,0d0)
+        Smat(i,i) = Smat(i,i) + (1d0,0d0)
+     ENDDO
+     CALL CompSqrMatInv(Amat,NumOpenChannels)
+     Smat = MATMUL(Amat,Smat)
+     recombProb = 1d0 - ABS(Smat(1,1))**2
+     WRITE(RecombFile,'(1P,E20.12,I5,E20.12)') Energy, NumOpenChannels, recombProb
+     DEALLOCATE(Amat,Smat)
 
      !---------------------------------------------------------------------
      ! Phase shift only has a plain scalar meaning with exactly one open
@@ -426,12 +507,17 @@ PROGRAM main
   ENDDO
 
   CALL DeAllocateBPD(BPD0)
+  IF (NumBoxes.GE.2) THEN
+     CALL DeAllocateBPD(BPD1)
+     DEALLOCATE(Gam0Box1,OverlapBox1,LamBox1)
+  ENDIF
   DEALLOCATE(xprim)
   CALL DeAllocateEIG(EIG)
   IF (ALLOCATED(Gam0Boxes)) DEALLOCATE(Gam0Boxes,OverlapBoxes,LamBoxes)
 
   CLOSE(PhaseFile)
   CLOSE(KMatFile)
+  CLOSE(RecombFile)
   WRITE(6,*)
   WRITE(6,*) "Phase shift written to PhaseShift.dat (xmgrace: xmgrace PhaseShift.dat)"
 

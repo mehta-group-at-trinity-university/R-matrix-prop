@@ -1,0 +1,1514 @@
+(* Content-type: application/vnd.wolfram.mathematica *)
+
+(*** Wolfram Notebook File ***)
+(* http://www.wolfram.com/nb *)
+
+(* CreatedBy='Wolfram 15.0' *)
+
+(*CacheID: 234*)
+(* Internal cache information:
+NotebookFileLineBreakTest
+NotebookFileLineBreakTest
+NotebookDataPosition[       154,          7]
+NotebookDataLength[     59584,       1504]
+NotebookOptionsPosition[     51285,       1365]
+NotebookOutlinePosition[     51779,       1383]
+CellTagsIndexPosition[     51736,       1380]
+WindowFrame->Normal*)
+
+(* Beginning of Notebook Content *)
+Notebook[{
+
+Cell[CellGroupData[{
+Cell["Verifying Amaya-Tapia Eq. 61 against Mehta-Shepard Eq. 10", "Title",ExpressionUUID->"28164a3e-0c86-41ea-b58b-3e49334818a4"],
+
+Cell["\<\
+Question: does Amaya-Tapia et al. (1997) Eq. (61) -- which the surrounding \
+text identifies as equal to -Exp[2 I delta_AT] -- give the same physical \
+phase shift as Mehta & Shepard (2005) Eq. (10) (Exp[2 I delta_MS]), once both \
+are expressed as a function of the same dimensionless variable X = q*a2 (a2 = \
+the standard two-body scattering length)? Both papers use the same \
+hyperspherical mass convention (muref = m, single-particle mass), confirmed \
+separately (Appendix A of Mehta & Shepard matches Amaya-Tapia's own Jacobi \
+coordinates exactly).\
+\>", "Text",ExpressionUUID->"deb01350-454a-4d7b-b148-7eac3edd2c47"],
+
+Cell[CellGroupData[{
+
+Cell["\<\
+Part 1: Amaya-Tapia Eq. 61 (their own delta-function coupling c = -1)\
+\>", "Section",ExpressionUUID->"d9348da8-63bb-4c2e-9bec-8b276c55039b"],
+
+Cell["\<\
+Transcribed directly from the paper:
+(R13+T13)(R23+T23) = [(1 - I(6 Sqrt[3]/Pi) q)(1 - I(2 Sqrt[3]/Pi) q)] / [(1 + \
+I(6 Sqrt[3]/Pi) q)(1 + I(2 Sqrt[3]/Pi) q)]
+The surrounding text states this quantity equals -Exp[2 I delta_AT].\
+\>", "Text",ExpressionUUID->"e9103de7-b626-49cb-92f9-b485d10b3ef7"],
+
+Cell[BoxData[
+ RowBox[{
+  RowBox[{
+   RowBox[{"Eq61", "[", "q_", "]"}], " ", ":=", " ", 
+   RowBox[{
+    RowBox[{"(", 
+     RowBox[{
+      RowBox[{"(", 
+       RowBox[{"1", " ", "-", " ", 
+        RowBox[{"I", "*", 
+         RowBox[{"(", 
+          RowBox[{"6", "*", 
+           RowBox[{
+            RowBox[{"Sqrt", "[", "3", "]"}], "/", "Pi"}]}], ")"}], "*", 
+         "q"}]}], ")"}], "*", 
+      RowBox[{"(", 
+       RowBox[{"1", " ", "-", " ", 
+        RowBox[{"I", "*", 
+         RowBox[{"(", 
+          RowBox[{"2", "*", 
+           RowBox[{
+            RowBox[{"Sqrt", "[", "3", "]"}], "/", "Pi"}]}], ")"}], "*", 
+         "q"}]}], ")"}]}], ")"}], " ", "/", " ", 
+    RowBox[{"(", 
+     RowBox[{
+      RowBox[{"(", 
+       RowBox[{"1", " ", "+", " ", 
+        RowBox[{"I", "*", 
+         RowBox[{"(", 
+          RowBox[{"6", "*", 
+           RowBox[{
+            RowBox[{"Sqrt", "[", "3", "]"}], "/", "Pi"}]}], ")"}], "*", 
+         "q"}]}], ")"}], "*", 
+      RowBox[{"(", 
+       RowBox[{"1", " ", "+", " ", 
+        RowBox[{"I", "*", 
+         RowBox[{"(", 
+          RowBox[{"2", "*", 
+           RowBox[{
+            RowBox[{"Sqrt", "[", "3", "]"}], "/", "Pi"}]}], ")"}], "*", 
+         "q"}]}], ")"}]}], ")"}]}]}], ";"}]], "Input",
+ CellLabel->"In[24]:=",ExpressionUUID->"67ddecc6-4e46-473d-b8fd-0f129d3a1752"],
+
+Cell[BoxData[
+ RowBox[{
+  RowBox[{
+   RowBox[{"exp2dAT", "[", "q_", "]"}], " ", ":=", " ", 
+   RowBox[{"-", 
+    RowBox[{"Eq61", "[", "q", "]"}]}]}], ";"}]], "Input",
+ CellLabel->"In[25]:=",ExpressionUUID->"964c8a0a-a303-46bd-b67b-f377aa504095"],
+
+Cell[BoxData[
+ RowBox[{
+  RowBox[{
+   RowBox[{"tanFromExp", "[", "E2d_", "]"}], " ", ":=", " ", 
+   RowBox[{"Simplify", "[", 
+    RowBox[{
+     RowBox[{"-", "I"}], "*", 
+     RowBox[{
+      RowBox[{"(", 
+       RowBox[{"E2d", " ", "-", " ", "1"}], ")"}], "/", 
+      RowBox[{"(", 
+       RowBox[{"E2d", " ", "+", " ", "1"}], ")"}]}]}], "]"}]}], 
+  ";"}]], "Input",
+ CellLabel->"In[26]:=",ExpressionUUID->"cc70ca75-4fce-4613-831b-2f867b6b113a"],
+
+Cell["\<\
+Amaya-Tapia give a formula, right before their Eq. (56), for the quantity 'a' \
+appearing in their bound-pair momenta k1 = I a, k2 = -I a: a = Pi*Abs[c]/(6 \
+Sqrt[2]). It is tempting to assume this 'a' IS the standard two-body \
+scattering length -- that assumption is tested below.\
+\>", "Text",ExpressionUUID->"2881429e-0a4d-43dd-b737-3e86af8fddf3"],
+
+Cell[BoxData[
+ RowBox[{
+  RowBox[{
+   RowBox[{"aAT", " ", "=", " ", 
+    RowBox[{"Pi", "/", 
+     RowBox[{"(", 
+      RowBox[{"6", "*", 
+       RowBox[{"Sqrt", "[", "2", "]"}]}], ")"}]}]}], ";"}], "  ", 
+  RowBox[{"(*", " ", 
+   RowBox[{
+    RowBox[{"c", "=", 
+     RowBox[{"-", "1"}]}], ",", " ", 
+    RowBox[{
+     RowBox[{"|", "c", "|"}], "=", "1"}]}], " ", "*)"}]}]], "Input",
+ CellLabel->"In[27]:=",ExpressionUUID->"f6b2493c-f05e-4b68-9adb-e68b6dad4d3f"]
+}, Open  ]],
+
+Cell[CellGroupData[{
+
+Cell["Part 2: Mehta-Shepard Eq. (10)", "Section",ExpressionUUID->"b52f9013-3f1a-46ad-b9ae-77fb51b64178"],
+
+Cell["\<\
+Exp[2 I delta_MS] = 1 - 8 Sqrt[6] X / (3 I X^2 + 4 Sqrt[6] X - 6 I), X = q*a2 \
+directly in their own variable.\
+\>", "Text",ExpressionUUID->"6b51105c-5a8c-4564-9d87-2be516de17b2"],
+
+Cell[BoxData[
+ RowBox[{
+  RowBox[{
+   RowBox[{"Eq10MS", "[", "X_", "]"}], " ", ":=", " ", 
+   RowBox[{"1", " ", "-", " ", 
+    RowBox[{"8", "*", 
+     RowBox[{"Sqrt", "[", "6", "]"}], "*", 
+     RowBox[{"X", "/", 
+      RowBox[{"(", 
+       RowBox[{
+        RowBox[{"3", "*", "I", "*", 
+         RowBox[{"X", "^", "2"}]}], " ", "+", " ", 
+        RowBox[{"4", "*", 
+         RowBox[{"Sqrt", "[", "6", "]"}], "*", "X"}], " ", "-", " ", 
+        RowBox[{"6", "*", "I"}]}], ")"}]}]}]}]}], ";"}]], "Input",
+ CellLabel->"In[28]:=",ExpressionUUID->"f9dc1fa3-9a2f-407f-8e7a-b1ca7073d8ec"],
+
+Cell[BoxData[
+ RowBox[{
+  RowBox[{
+   RowBox[{"tanMS", "[", "X_", "]"}], " ", ":=", " ", 
+   RowBox[{
+    RowBox[{"tanFromExp", "[", 
+     RowBox[{"Eq10MS", "[", "X", "]"}], "]"}], " ", "//", " ", 
+    "FullSimplify"}]}], ";"}]], "Input",
+ CellLabel->"In[29]:=",ExpressionUUID->"d4bf3932-5599-4ed3-bb8b-6203ef38f4ac"],
+
+Cell["\<\
+Sanity check: this should reduce, via Eq. (11) (Exp[2 I delta]-1 = 2 I \
+tan(delta)/(1 - I tan(delta))), to Mehta-Shepard's own stated Eq. (12): q a2 \
+tan(delta) = 4 Sqrt[2/3] (q a2)^2 / ((q a2)^2 - 2).\
+\>", "Text",ExpressionUUID->"07ea88da-1c02-4970-846c-a5f56f88fbbb"],
+
+Cell[CellGroupData[{
+
+Cell[BoxData[
+ RowBox[{
+  RowBox[{"Print", "[", 
+   RowBox[{"\"\<X*tan(delta_MS) = \>\"", ",", " ", 
+    RowBox[{"FullSimplify", "[", 
+     RowBox[{"X", "*", 
+      RowBox[{"tanMS", "[", "X", "]"}]}], "]"}]}], "]"}], ";"}]], "Input",
+ CellLabel->"In[30]:=",ExpressionUUID->"e35c1793-cf14-4b5a-b69e-df65189a4446"],
+
+Cell[BoxData[
+ InterpretationBox[
+  RowBox[{"\<\"X*tan(delta_MS) = \"\>", "\[InvisibleSpace]", 
+   FractionBox[
+    RowBox[{"4", " ", 
+     SqrtBox[
+      FractionBox["2", "3"]], " ", 
+     SuperscriptBox["X", "2"]}], 
+    RowBox[{
+     RowBox[{"-", "2"}], "+", 
+     SuperscriptBox["X", "2"]}]]}],
+  SequenceForm[
+  "X*tan(delta_MS) = ", 4 
+   Rational[2, 3]^Rational[1, 2] $CellContext`X^2/(-2 + $CellContext`X^2)],
+  Editable->False]], "Print",
+ CellChangeTimes->{3.993844968794808*^9},
+ CellLabel->
+  "During evaluation of \
+In[30]:=",ExpressionUUID->"81f17743-0ecf-4a6c-8775-a7fe122d8d62"]
+}, Open  ]],
+
+Cell[CellGroupData[{
+
+Cell[BoxData[
+ RowBox[{
+  RowBox[{"Print", "[", 
+   RowBox[{"\"\<Eq (12) RHS directly = \>\"", ",", " ", 
+    RowBox[{"FullSimplify", "[", 
+     RowBox[{"4", "*", 
+      RowBox[{"Sqrt", "[", 
+       RowBox[{"2", "/", "3"}], "]"}], "*", 
+      RowBox[{
+       RowBox[{"X", "^", "2"}], "/", 
+       RowBox[{"(", 
+        RowBox[{
+         RowBox[{"X", "^", "2"}], " ", "-", " ", "2"}], ")"}]}]}], "]"}]}], 
+   "]"}], ";"}]], "Input",
+ CellLabel->"In[31]:=",ExpressionUUID->"a85c8e8f-1eff-4f18-9098-ec9f61b5d43a"],
+
+Cell[BoxData[
+ InterpretationBox[
+  RowBox[{"\<\"Eq (12) RHS directly = \"\>", "\[InvisibleSpace]", 
+   FractionBox[
+    RowBox[{"4", " ", 
+     SqrtBox[
+      FractionBox["2", "3"]], " ", 
+     SuperscriptBox["X", "2"]}], 
+    RowBox[{
+     RowBox[{"-", "2"}], "+", 
+     SuperscriptBox["X", "2"]}]]}],
+  SequenceForm[
+  "Eq (12) RHS directly = ", 4 
+   Rational[2, 3]^Rational[1, 2] $CellContext`X^2/(-2 + $CellContext`X^2)],
+  Editable->False]], "Print",
+ CellChangeTimes->{3.993844968811171*^9},
+ CellLabel->
+  "During evaluation of \
+In[31]:=",ExpressionUUID->"850262cf-675d-4531-b712-ad4d62de5d84"]
+}, Open  ]],
+
+Cell["\<\
+If these two Print outputs match, the Eq. (10) transcription and the \
+tanFromExp extraction are both validated against Mehta-Shepard's own internal \
+consistency (Eq 10 -> Eq 12).\
+\>", "Text",ExpressionUUID->"723bbd39-843f-49d2-84fe-2e54a267b971"]
+}, Open  ]],
+
+Cell[CellGroupData[{
+
+Cell["\<\
+Part 3: first attempt, treating aAT as the scattering length directly (X = \
+q*aAT, q = X/aAT)\
+\>", "Section",ExpressionUUID->"82d8f0fd-43c1-40b9-bc50-d31d89cff638"],
+
+Cell["\<\
+This is the FIRST substitution tried -- it does not work, and is kept here to \
+show why.\
+\>", "Text",ExpressionUUID->"a886cb3a-a4cd-4012-b862-cffc2e725ec3"],
+
+Cell[BoxData[
+ RowBox[{
+  RowBox[{
+   RowBox[{"tanAT", "[", "q_", "]"}], " ", ":=", " ", 
+   RowBox[{
+    RowBox[{"tanFromExp", "[", 
+     RowBox[{"exp2dAT", "[", "q", "]"}], "]"}], " ", "//", " ", 
+    "FullSimplify"}]}], ";"}]], "Input",
+ CellLabel->"In[32]:=",ExpressionUUID->"e70d9623-54ad-4335-9eec-662cec4ebb47"],
+
+Cell[BoxData[
+ RowBox[{
+  RowBox[{"tanATinXNaive", " ", "=", " ", 
+   RowBox[{
+    RowBox[{"tanAT", "[", 
+     RowBox[{"X", "/", "aAT"}], "]"}], " ", "//", " ", "FullSimplify"}]}], 
+  ";"}]], "Input",
+ CellLabel->"In[33]:=",ExpressionUUID->"f976c071-25da-4a66-8af3-e1085f7628e8"],
+
+Cell[CellGroupData[{
+
+Cell[BoxData[
+ RowBox[{
+  RowBox[{"Print", "[", 
+   RowBox[{"\"\<(naive) X*tan(delta_AT) = \>\"", ",", " ", 
+    RowBox[{"FullSimplify", "[", 
+     RowBox[{"X", "*", "tanATinXNaive"}], "]"}]}], "]"}], ";"}]], "Input",
+ CellLabel->"In[34]:=",ExpressionUUID->"fcf4f037-5b84-46a9-8aca-ecb0277685bf"],
+
+Cell[BoxData[
+ InterpretationBox[
+  RowBox[{"\<\"(naive) X*tan(delta_AT) = \"\>", "\[InvisibleSpace]", 
+   FractionBox[
+    RowBox[{
+     SuperscriptBox["\[Pi]", "4"], "-", 
+     RowBox[{"2592", " ", 
+      SuperscriptBox["X", "2"]}]}], 
+    RowBox[{"48", " ", 
+     SqrtBox["6"], " ", 
+     SuperscriptBox["\[Pi]", "2"]}]]}],
+  SequenceForm[
+  "(naive) X*tan(delta_AT) = ", Rational[1, 48] 6^Rational[-1, 2] 
+   Pi^(-2) (Pi^4 - 2592 $CellContext`X^2)],
+  Editable->False]], "Print",
+ CellChangeTimes->{3.993844968862876*^9},
+ CellLabel->
+  "During evaluation of \
+In[34]:=",ExpressionUUID->"26e452ea-3c3c-4a13-9983-7cc67d3046de"]
+}, Open  ]],
+
+Cell[CellGroupData[{
+
+Cell[BoxData[
+ RowBox[{
+  RowBox[{"Print", "[", 
+   RowBox[{"\"\<X*tan(delta_MS) = \>\"", ",", " ", 
+    RowBox[{"FullSimplify", "[", 
+     RowBox[{"X", "*", 
+      RowBox[{"tanMS", "[", "X", "]"}]}], "]"}]}], "]"}], ";"}]], "Input",
+ CellLabel->"In[35]:=",ExpressionUUID->"0d8c92ff-9648-41c4-8d1c-e8b2985327cf"],
+
+Cell[BoxData[
+ InterpretationBox[
+  RowBox[{"\<\"X*tan(delta_MS) = \"\>", "\[InvisibleSpace]", 
+   FractionBox[
+    RowBox[{"4", " ", 
+     SqrtBox[
+      FractionBox["2", "3"]], " ", 
+     SuperscriptBox["X", "2"]}], 
+    RowBox[{
+     RowBox[{"-", "2"}], "+", 
+     SuperscriptBox["X", "2"]}]]}],
+  SequenceForm[
+  "X*tan(delta_MS) = ", 4 
+   Rational[2, 3]^Rational[1, 2] $CellContext`X^2/(-2 + $CellContext`X^2)],
+  Editable->False]], "Print",
+ CellChangeTimes->{3.993844968869285*^9},
+ CellLabel->
+  "During evaluation of \
+In[35]:=",ExpressionUUID->"67ff595b-5a67-4dce-b68d-0bcfade11f19"]
+}, Open  ]],
+
+Cell["\<\
+The naive result is LINEAR in X^2 with no pole, while X*tan(delta_MS) has a \
+pole at X^2=2 (the resonance both papers discuss) -- structurally different \
+functions. This is the discrepancy that motivated Part 4.\
+\>", "Text",ExpressionUUID->"3c8fa0f3-d59f-440d-88ee-6cfc6301b66d"]
+}, Open  ]],
+
+Cell[CellGroupData[{
+
+Cell["\<\
+Part 4: is aAT actually the scattering length, or its reciprocal?\
+\>", "Section",ExpressionUUID->"467aef31-a7d9-4be5-b598-6101c9d9711d"],
+
+Cell["\<\
+Check via the two-body binding energy B2. Amaya-Tapia's own text (last page) \
+states B2 = (Pi^2/36)(c^2/(2m)) for general c. Standard 1D delta-function \
+result (bare coupling g, reduced mass mu2=m/2): B2 = mu2*g^2/2, scattering \
+length a2std = -1/(mu2*g). Amaya-Tapia's own K=0 section relates their \
+rescaled c to the bare coupling via c = (3/(Pi Sqrt[2]))*(2 m)*g.\
+\>", "Text",ExpressionUUID->"4fa83b5c-f790-4234-8060-e1bfe6cf83a0"],
+
+Cell[BoxData[
+ RowBox[{
+  RowBox[{"mu2", " ", "=", " ", 
+   RowBox[{"m", "/", "2"}]}], ";"}]], "Input",
+ CellLabel->"In[36]:=",ExpressionUUID->"26a4efee-405f-4664-a750-a4557dead97b"],
+
+Cell[BoxData[
+ RowBox[{
+  RowBox[{"cOfG", " ", "=", " ", 
+   RowBox[{
+    RowBox[{"(", 
+     RowBox[{"3", "/", 
+      RowBox[{"(", 
+       RowBox[{"Pi", "*", 
+        RowBox[{"Sqrt", "[", "2", "]"}]}], ")"}]}], ")"}], "*", 
+    RowBox[{"(", 
+     RowBox[{"2", "*", "m"}], ")"}], "*", "g"}]}], ";"}]], "Input",
+ CellLabel->"In[37]:=",ExpressionUUID->"1fc639ff-c6b5-40a9-9cbf-574d8b0b941b"],
+
+Cell[BoxData[
+ RowBox[{
+  RowBox[{"a2std", " ", "=", " ", 
+   RowBox[{
+    RowBox[{
+     RowBox[{"-", "1"}], "/", 
+     RowBox[{"(", 
+      RowBox[{"mu2", "*", "g"}], ")"}]}], " ", "//", " ", "Simplify"}]}], 
+  ";"}]], "Input",
+ CellLabel->"In[38]:=",ExpressionUUID->"9132a351-c9e4-42a5-b79a-16d6e500a7b0"],
+
+Cell[BoxData[
+ RowBox[{
+  RowBox[{"B2std", " ", "=", " ", 
+   RowBox[{
+    RowBox[{
+     RowBox[{"(", 
+      RowBox[{"mu2", "*", 
+       RowBox[{"g", "^", "2"}]}], ")"}], "/", "2"}], " ", "//", " ", 
+    "Simplify"}]}], ";"}]], "Input",
+ CellLabel->"In[39]:=",ExpressionUUID->"dfcf5a19-ff5f-4d18-b210-df05999e99e1"],
+
+Cell[BoxData[
+ RowBox[{
+  RowBox[{"aATofG", " ", "=", " ", 
+   RowBox[{"FullSimplify", "[", 
+    RowBox[{
+     RowBox[{"(", 
+      RowBox[{"Pi", "*", 
+       RowBox[{"Abs", "[", "cOfG", "]"}]}], ")"}], "/", 
+     RowBox[{"(", 
+      RowBox[{"6", "*", 
+       RowBox[{"Sqrt", "[", "2", "]"}]}], ")"}]}], "]"}]}], ";"}]], "Input",
+ CellLabel->"In[40]:=",ExpressionUUID->"5302825f-ea7c-4daf-820d-ada503fd9a90"],
+
+Cell[BoxData[
+ RowBox[{
+  RowBox[{"B2ATofG", " ", "=", " ", 
+   RowBox[{"FullSimplify", "[", 
+    RowBox[{
+     RowBox[{"(", 
+      RowBox[{
+       RowBox[{"Pi", "^", "2"}], "/", "36"}], ")"}], "*", 
+     RowBox[{"(", 
+      RowBox[{
+       RowBox[{"cOfG", "^", "2"}], "/", 
+       RowBox[{"(", 
+        RowBox[{"2", "*", "m"}], ")"}]}], ")"}]}], "]"}]}], ";"}]], "Input",
+ CellLabel->"In[41]:=",ExpressionUUID->"e2903a97-d4e5-4eb4-bcfe-f04fc8f3b77b"],
+
+Cell[CellGroupData[{
+
+Cell[BoxData[
+ RowBox[{
+  RowBox[{"Print", "[", 
+   RowBox[{"\"\<B2 (standard, bare g) = \>\"", ",", " ", "B2std", ",", 
+    " ", "\"\<   B2 (Amaya-Tapia's own formula, bare g) = \>\"", ",", " ", 
+    "B2ATofG", ",", " ", "\"\<   ratio = \>\"", ",", " ", 
+    RowBox[{"FullSimplify", "[", 
+     RowBox[{"B2ATofG", "/", "B2std"}], "]"}]}], "]"}], ";"}]], "Input",
+ CellLabel->"In[42]:=",ExpressionUUID->"7808758c-f69f-462b-9cc9-39865f69ec22"],
+
+Cell[BoxData[
+ InterpretationBox[
+  RowBox[{"\<\"B2 (standard, bare g) = \"\>", "\[InvisibleSpace]", 
+   FractionBox[
+    RowBox[{
+     SuperscriptBox["g", "2"], " ", "m"}], "4"], 
+   "\[InvisibleSpace]", "\<\"   B2 (Amaya-Tapia's own formula, bare g) = \
+\"\>", "\[InvisibleSpace]", 
+   FractionBox[
+    RowBox[{
+     SuperscriptBox["g", "2"], " ", "m"}], "4"], 
+   "\[InvisibleSpace]", "\<\"   ratio = \"\>", "\[InvisibleSpace]", "1"}],
+  SequenceForm[
+  "B2 (standard, bare g) = ", Rational[1, 4] $CellContext`g^2 $CellContext`m, 
+   "   B2 (Amaya-Tapia's own formula, bare g) = ", 
+   Rational[1, 4] $CellContext`g^2 $CellContext`m, "   ratio = ", 1],
+  Editable->False]], "Print",
+ CellChangeTimes->{3.9938449689828777`*^9},
+ CellLabel->
+  "During evaluation of \
+In[42]:=",ExpressionUUID->"5a0262d5-2480-45ef-b01e-f5509fff9ffa"]
+}, Open  ]],
+
+Cell[CellGroupData[{
+
+Cell[BoxData[
+ RowBox[{
+  RowBox[{"Print", "[", 
+   RowBox[{"\"\<aAT (bare g) = \>\"", ",", " ", "aATofG", ",", 
+    " ", "\"\<   a2std (bare g) = \>\"", ",", " ", "a2std", ",", 
+    " ", "\"\<   aAT * a2std = \>\"", ",", " ", 
+    RowBox[{"FullSimplify", "[", 
+     RowBox[{
+      RowBox[{"aATofG", "*", "a2std"}], ",", " ", 
+      RowBox[{"Assumptions", " ", "->", " ", 
+       RowBox[{"g", " ", "<", " ", "0"}]}]}], "]"}]}], "]"}], ";"}]], "Input",\
+
+ CellLabel->"In[43]:=",ExpressionUUID->"10e96fda-89ff-4bc6-8bc7-e3248cb94fdb"],
+
+Cell[BoxData[
+ InterpretationBox[
+  RowBox[{"\<\"aAT (bare g) = \"\>", "\[InvisibleSpace]", 
+   RowBox[{
+    FractionBox["1", "2"], " ", 
+    RowBox[{"Abs", "[", 
+     RowBox[{"g", " ", "m"}], "]"}]}], 
+   "\[InvisibleSpace]", "\<\"   a2std (bare g) = \"\>", "\[InvisibleSpace]", 
+   RowBox[{"-", 
+    FractionBox["2", 
+     RowBox[{"g", " ", "m"}]]}], 
+   "\[InvisibleSpace]", "\<\"   aAT * a2std = \"\>", "\[InvisibleSpace]", 
+   FractionBox["1", 
+    RowBox[{"Sign", "[", "m", "]"}]]}],
+  SequenceForm[
+  "aAT (bare g) = ", Rational[1, 2] Abs[$CellContext`g $CellContext`m], 
+   "   a2std (bare g) = ", (-2) $CellContext`g^(-1)/$CellContext`m, 
+   "   aAT * a2std = ", Sign[$CellContext`m]^(-1)],
+  Editable->False]], "Print",
+ CellChangeTimes->{3.9938449689952393`*^9},
+ CellLabel->
+  "During evaluation of \
+In[43]:=",ExpressionUUID->"45c8000d-edee-4739-9f4e-1535926e776d"]
+}, Open  ]],
+
+Cell["\<\
+Result: B2 ratio = 1 (fully consistent), but aAT * a2std = 1 -- i.e. \
+Amaya-Tapia's 'a' is the RECIPROCAL of the standard scattering length, not \
+the scattering length itself.\
+\>", "Text",ExpressionUUID->"8aa0a14d-1b7d-4b23-a02e-d2a4696bcf37"]
+}, Open  ]],
+
+Cell[CellGroupData[{
+
+Cell["\<\
+Part 5: independent, from-scratch confirmation via the bound-state decay rate\
+\
+\>", "Section",ExpressionUUID->"7ba21a1d-b1fa-49e7-be69-38ef2dd7a614"],
+
+Cell["\<\
+Solve the two-body relative-motion Schrodinger equation directly, deriving \
+the decay rate kappa from the delta-function jump condition (not assumed), \
+and separately confirm that Amaya-Tapia's own k1 = I a, k2 = -I a IS this \
+same kappa with no hidden factor.\
+\>", "Text",ExpressionUUID->"1c75e2bf-cd02-4dae-bc55-0a94b9b6cced"],
+
+Cell[BoxData[
+ RowBox[{
+  RowBox[{"kappaOfB2", " ", "=", " ", 
+   RowBox[{"Sqrt", "[", 
+    RowBox[{"2", "*", "mu2", "*", "B2"}], "]"}]}], ";"}]], "Input",
+ CellLabel->"In[44]:=",ExpressionUUID->"3687e7aa-1f54-4f9c-95f6-a1cc14235211"],
+
+Cell[CellGroupData[{
+
+Cell[BoxData[
+ RowBox[{
+  RowBox[{"Print", "[", 
+   RowBox[{"\"\<Step 1 (solve psi''=2 mu2 B2 psi for x!=0): kappa = \>\"", ",",
+     " ", "kappaOfB2"}], "]"}], ";"}]], "Input",
+ CellLabel->"In[45]:=",ExpressionUUID->"43daa125-6629-4b2f-ba74-32637d68357e"],
+
+Cell[BoxData[
+ InterpretationBox[
+  RowBox[{"\<\"Step 1 (solve psi''=2 mu2 B2 psi for x!=0): kappa = \"\>", "\[InvisibleSpace]", 
+   SqrtBox[
+    RowBox[{"B2", " ", "m"}]]}],
+  SequenceForm[
+  "Step 1 (solve psi''=2 mu2 B2 psi for x!=0): kappa = ", ($CellContext`B2 \
+$CellContext`m)^Rational[1, 2]],
+  Editable->False]], "Print",
+ CellChangeTimes->{3.993844969021266*^9},
+ CellLabel->
+  "During evaluation of \
+In[45]:=",ExpressionUUID->"f15749f9-60e2-4df6-bec3-2035011c81b0"]
+}, Open  ]],
+
+Cell["\<\
+Jump condition: integrating -(1/(2 mu2)) psi'' + g delta(x) psi = E psi \
+across x=0 gives psi'(0+) - psi'(0-) = 2 mu2 g psi(0); for the symmetric \
+bound state psi = A Exp[-kappa Abs[x]], this gives kappa = -mu2*g.\
+\>", "Text",ExpressionUUID->"206659b7-e764-42ed-8d0b-b606e7013c53"],
+
+Cell[BoxData[
+ RowBox[{
+  RowBox[{"kappaOfG", " ", "=", " ", 
+   RowBox[{
+    RowBox[{"-", "mu2"}], "*", "g"}]}], ";"}]], "Input",
+ CellLabel->"In[46]:=",ExpressionUUID->"9bb21865-3972-4f11-b0ba-0eff41075524"],
+
+Cell[CellGroupData[{
+
+Cell[BoxData[
+ RowBox[{
+  RowBox[{"Print", "[", 
+   RowBox[{"\"\<Step 2 (jump condition): kappa = \>\"", ",", " ", "kappaOfG", 
+    ",", " ", "\"\<    kappa*a2std = \>\"", ",", " ", 
+    RowBox[{"FullSimplify", "[", 
+     RowBox[{"kappaOfG", "*", "a2std"}], "]"}]}], "]"}], ";"}]], "Input",
+ CellLabel->"In[47]:=",ExpressionUUID->"db82a790-4f85-4899-b3b3-ecdf0738db16"],
+
+Cell[BoxData[
+ InterpretationBox[
+  RowBox[{"\<\"Step 2 (jump condition): kappa = \"\>", "\[InvisibleSpace]", 
+   RowBox[{"-", 
+    FractionBox[
+     RowBox[{"g", " ", "m"}], "2"]}], 
+   "\[InvisibleSpace]", "\<\"    kappa*a2std = \"\>", "\[InvisibleSpace]", 
+   "1"}],
+  SequenceForm[
+  "Step 2 (jump condition): kappa = ", 
+   Rational[-1, 2] $CellContext`g $CellContext`m, "    kappa*a2std = ", 1],
+  Editable->False]], "Print",
+ CellChangeTimes->{3.993844969036165*^9},
+ CellLabel->
+  "During evaluation of \
+In[47]:=",ExpressionUUID->"8edb7c20-a91f-4f96-99d1-9a770ff8f5ea"]
+}, Open  ]],
+
+Cell[CellGroupData[{
+
+Cell[BoxData[
+ RowBox[{
+  RowBox[{"B2fromKappa", " ", "=", " ", 
+   RowBox[{
+    RowBox[{
+     RowBox[{"Solve", "[", 
+      RowBox[{
+       RowBox[{"kappaOfG", " ", "==", " ", 
+        RowBox[{"Sqrt", "[", 
+         RowBox[{"2", "*", "mu2", "*", "B2"}], "]"}]}], ",", " ", "B2"}], 
+      "]"}], "[", 
+     RowBox[{"[", 
+      RowBox[{"1", ",", " ", "1", ",", " ", "2"}], "]"}], "]"}], " ", "//", 
+    " ", "FullSimplify"}]}], ";"}]], "Input",
+ CellLabel->"In[48]:=",ExpressionUUID->"c00b8638-f3f4-4fc1-a12b-3005c6151318"],
+
+Cell[BoxData[
+ TemplateBox[{
+  "Solve", "nongen", 
+   "\"There may be values of the parameters for which some or all solutions \
+are not valid.\"", 2, 48, 1, 33641034056288688654, "Local"},
+  "MessageTemplate",
+  BaseStyle->"MSG"]], "Message",
+ CellChangeTimes->{3.993844969084549*^9},
+ CellLabel->
+  "During evaluation of \
+In[48]:=",ExpressionUUID->"592c7c00-6d9e-46d5-ad75-4da9c99695ba"]
+}, Open  ]],
+
+Cell[CellGroupData[{
+
+Cell[BoxData[
+ RowBox[{
+  RowBox[{"Print", "[", 
+   RowBox[{"\"\<Step 3: B2 (from kappa) = \>\"", ",", " ", "B2fromKappa", ",",
+     " ", "\"\<   vs textbook mu2 g^2/2 = \>\"", ",", " ", 
+    RowBox[{"FullSimplify", "[", 
+     RowBox[{"mu2", "*", 
+      RowBox[{
+       RowBox[{"g", "^", "2"}], "/", "2"}]}], "]"}]}], "]"}], ";"}]], "Input",\
+
+ CellLabel->"In[49]:=",ExpressionUUID->"ab6b064e-dde0-4fa0-92c9-c25e35837371"],
+
+Cell[BoxData[
+ InterpretationBox[
+  RowBox[{"\<\"Step 3: B2 (from kappa) = \"\>", "\[InvisibleSpace]", 
+   FractionBox[
+    RowBox[{
+     SuperscriptBox["g", "2"], " ", "m"}], "4"], 
+   "\[InvisibleSpace]", "\<\"   vs textbook mu2 g^2/2 = \"\>", "\[InvisibleSpace]", 
+   FractionBox[
+    RowBox[{
+     SuperscriptBox["g", "2"], " ", "m"}], "4"]}],
+  SequenceForm[
+  "Step 3: B2 (from kappa) = ", 
+   Rational[1, 4] $CellContext`g^2 $CellContext`m, 
+   "   vs textbook mu2 g^2/2 = ", 
+   Rational[1, 4] $CellContext`g^2 $CellContext`m],
+  Editable->False]], "Print",
+ CellChangeTimes->{3.993844969120124*^9},
+ CellLabel->
+  "During evaluation of \
+In[49]:=",ExpressionUUID->"432ce25c-454a-4a16-9bcb-8226de27b93f"]
+}, Open  ]],
+
+Cell["\<\
+Now check Amaya-Tapia's own k1=I a, k2=-I a directly: with the CM at rest \
+(k1+k2=0), what is I(k1 x1 + k2 x2)?\
+\>", "Text",ExpressionUUID->"9fbf322a-c7e3-41c6-aae7-0cb543a6f02b"],
+
+Cell[BoxData[
+ RowBox[{
+  RowBox[{"psiExponent", " ", "=", " ", 
+   RowBox[{
+    RowBox[{"I", "*", 
+     RowBox[{"(", 
+      RowBox[{
+       RowBox[{"I", "*", "a", "*", "x1"}], " ", "+", " ", 
+       RowBox[{
+        RowBox[{"(", 
+         RowBox[{
+          RowBox[{"-", "I"}], "*", "a"}], ")"}], "*", "x2"}]}], ")"}]}], " ", 
+    "//", " ", "Expand"}]}], ";"}]], "Input",
+ CellLabel->"In[50]:=",ExpressionUUID->"6250c7ce-34b1-43b9-9ce1-595ef105e559"],
+
+Cell[CellGroupData[{
+
+Cell[BoxData[
+ RowBox[{
+  RowBox[{"Print", "[", 
+   RowBox[{"\"\<Step 4: I(k1 x1 + k2 x2) = \>\"", ",", " ", "psiExponent", ",",
+     " ", "\"\<  i.e. Psi ~ Exp[-a*(x1-x2)] -- AT's own 'a' IS the \
+relative-coordinate decay rate kappa directly, no extra factor.\>\""}], "]"}],
+   ";"}]], "Input",
+ CellLabel->"In[51]:=",ExpressionUUID->"10d9176e-9722-4e7c-ab9b-23d213f313eb"],
+
+Cell[BoxData[
+ InterpretationBox[
+  RowBox[{"\<\"Step 4: I(k1 x1 + k2 x2) = \"\>", "\[InvisibleSpace]", 
+   RowBox[{
+    RowBox[{
+     RowBox[{"-", "a"}], " ", "x1"}], "+", 
+    RowBox[{"a", " ", "x2"}]}], 
+   "\[InvisibleSpace]", "\<\"  i.e. Psi ~ Exp[-a*(x1-x2)] -- AT's own 'a' IS \
+the relative-coordinate decay rate kappa directly, no extra factor.\"\>"}],
+  SequenceForm[
+  "Step 4: I(k1 x1 + k2 x2) = ", -$CellContext`a $CellContext`x1 + \
+$CellContext`a $CellContext`x2, 
+   "  i.e. Psi ~ Exp[-a*(x1-x2)] -- AT's own 'a' IS the relative-coordinate \
+decay rate kappa directly, no extra factor."],
+  Editable->False]], "Print",
+ CellChangeTimes->{3.993844969133067*^9},
+ CellLabel->
+  "During evaluation of \
+In[51]:=",ExpressionUUID->"7ae4addf-7e0a-4ec5-922d-865049c58e5f"]
+}, Open  ]],
+
+Cell[CellGroupData[{
+
+Cell[BoxData[
+ RowBox[{
+  RowBox[{"Print", "[", 
+   RowBox[{"\"\<Step 5: aATofG = \>\"", ",", " ", "aATofG", ",", 
+    " ", "\"\<   Abs[kappaOfG] = \>\"", ",", " ", 
+    RowBox[{"FullSimplify", "[", 
+     RowBox[{"Abs", "[", "kappaOfG", "]"}], "]"}], ",", 
+    " ", "\"\<   ratio = \>\"", ",", " ", 
+    RowBox[{"FullSimplify", "[", 
+     RowBox[{"aATofG", "/", 
+      RowBox[{"Abs", "[", "kappaOfG", "]"}]}], "]"}]}], "]"}], ";"}]], "Input",\
+
+ CellLabel->"In[52]:=",ExpressionUUID->"5d5f6b83-5225-40b9-895c-3a3720f3eeb2"],
+
+Cell[BoxData[
+ InterpretationBox[
+  RowBox[{"\<\"Step 5: aATofG = \"\>", "\[InvisibleSpace]", 
+   RowBox[{
+    FractionBox["1", "2"], " ", 
+    RowBox[{"Abs", "[", 
+     RowBox[{"g", " ", "m"}], "]"}]}], 
+   "\[InvisibleSpace]", "\<\"   Abs[kappaOfG] = \"\>", "\[InvisibleSpace]", 
+   RowBox[{
+    FractionBox["1", "2"], " ", 
+    RowBox[{"Abs", "[", 
+     RowBox[{"g", " ", "m"}], "]"}]}], 
+   "\[InvisibleSpace]", "\<\"   ratio = \"\>", "\[InvisibleSpace]", "1"}],
+  SequenceForm[
+  "Step 5: aATofG = ", Rational[1, 2] Abs[$CellContext`g $CellContext`m], 
+   "   Abs[kappaOfG] = ", Rational[1, 2] Abs[$CellContext`g $CellContext`m], 
+   "   ratio = ", 1],
+  Editable->False]], "Print",
+ CellChangeTimes->{3.993844969143627*^9},
+ CellLabel->
+  "During evaluation of \
+In[52]:=",ExpressionUUID->"3fd4da1a-c213-4060-b4d7-cde94a2dcbd5"]
+}, Open  ]],
+
+Cell["\<\
+Every step above ties out with ratio 1 -- no floating factor of 2 anywhere in \
+this chain. aAT = kappa = 1/a2std is confirmed three independent ways (B2 \
+comparison, jump-condition kappa, and the k1=Ia/k2=-Ia wavefunction exponent \
+directly).\
+\>", "Text",ExpressionUUID->"82e9fd4f-4043-4850-bbc9-3d23231a675c"]
+}, Open  ]],
+
+Cell[CellGroupData[{
+
+Cell["\<\
+Part 6: corrected comparison, using X = q*a2std = q/aAT (i.e. q = X*aAT)\
+\>", "Section",ExpressionUUID->"482ac6d7-46e5-4247-9ccd-0ab16aeb8333"],
+
+Cell[BoxData[
+ RowBox[{
+  RowBox[{"tanATinX", " ", "=", " ", 
+   RowBox[{
+    RowBox[{"tanAT", "[", 
+     RowBox[{"X", "*", "aAT"}], "]"}], " ", "//", " ", "FullSimplify"}]}], 
+  ";"}]], "Input",
+ CellLabel->"In[53]:=",ExpressionUUID->"ed0ea58c-2be6-4739-a6da-d189252d622f"],
+
+Cell[CellGroupData[{
+
+Cell[BoxData[
+ RowBox[{
+  RowBox[{"Print", "[", 
+   RowBox[{"\"\<(corrected) tan(delta_AT) in terms of X=q*a2std: \>\"", ",", 
+    " ", "tanATinX"}], "]"}], ";"}]], "Input",
+ CellLabel->"In[54]:=",ExpressionUUID->"62c110f2-1783-49b4-b5d4-e1e8793d4c18"],
+
+Cell[BoxData[
+ InterpretationBox[
+  RowBox[{"\<\"(corrected) tan(delta_AT) in terms of X=q*a2std: \"\>", "\[InvisibleSpace]", 
+   RowBox[{"-", 
+    FractionBox[
+     RowBox[{
+      SqrtBox[
+       FractionBox["3", "2"]], " ", 
+      RowBox[{"(", 
+       RowBox[{
+        RowBox[{"-", "2"}], "+", 
+        SuperscriptBox["X", "2"]}], ")"}]}], 
+     RowBox[{"4", " ", "X"}]]}]}],
+  SequenceForm[
+  "(corrected) tan(delta_AT) in terms of X=q*a2std: ", Rational[-1, 4] 
+   Rational[3, 2]^Rational[1, 2] $CellContext`X^(-1) (-2 + $CellContext`X^2)],
+  
+  Editable->False]], "Print",
+ CellChangeTimes->{3.9938449691604433`*^9},
+ CellLabel->
+  "During evaluation of \
+In[54]:=",ExpressionUUID->"8cc8b7c6-54a9-4499-ba09-96289b920a75"]
+}, Open  ]],
+
+Cell[CellGroupData[{
+
+Cell[BoxData[
+ RowBox[{
+  RowBox[{"Print", "[", 
+   RowBox[{"\"\<(corrected) X*tan(delta_AT) = \>\"", ",", " ", 
+    RowBox[{"FullSimplify", "[", 
+     RowBox[{"X", "*", "tanATinX"}], "]"}]}], "]"}], ";"}]], "Input",
+ CellLabel->"In[55]:=",ExpressionUUID->"261ffc3d-97db-4b47-9d47-db406c9f925f"],
+
+Cell[BoxData[
+ InterpretationBox[
+  RowBox[{"\<\"(corrected) X*tan(delta_AT) = \"\>", "\[InvisibleSpace]", 
+   RowBox[{
+    RowBox[{"-", 
+     FractionBox["1", "4"]}], " ", 
+    SqrtBox[
+     FractionBox["3", "2"]], " ", 
+    RowBox[{"(", 
+     RowBox[{
+      RowBox[{"-", "2"}], "+", 
+      SuperscriptBox["X", "2"]}], ")"}]}]}],
+  SequenceForm[
+  "(corrected) X*tan(delta_AT) = ", Rational[-1, 4] 
+   Rational[3, 2]^Rational[1, 2] (-2 + $CellContext`X^2)],
+  Editable->False]], "Print",
+ CellChangeTimes->{3.9938449691745987`*^9},
+ CellLabel->
+  "During evaluation of \
+In[55]:=",ExpressionUUID->"419269a7-f2cc-401c-8898-1eea646cc195"]
+}, Open  ]],
+
+Cell[CellGroupData[{
+
+Cell[BoxData[
+ RowBox[{
+  RowBox[{"Print", "[", 
+   RowBox[{"\"\<X*tan(delta_MS) = \>\"", ",", " ", 
+    RowBox[{"FullSimplify", "[", 
+     RowBox[{"X", "*", 
+      RowBox[{"tanMS", "[", "X", "]"}]}], "]"}]}], "]"}], ";"}]], "Input",
+ CellLabel->"In[56]:=",ExpressionUUID->"1dbc8596-faa2-4da0-99d7-f99489ff1eed"],
+
+Cell[BoxData[
+ InterpretationBox[
+  RowBox[{"\<\"X*tan(delta_MS) = \"\>", "\[InvisibleSpace]", 
+   FractionBox[
+    RowBox[{"4", " ", 
+     SqrtBox[
+      FractionBox["2", "3"]], " ", 
+     SuperscriptBox["X", "2"]}], 
+    RowBox[{
+     RowBox[{"-", "2"}], "+", 
+     SuperscriptBox["X", "2"]}]]}],
+  SequenceForm[
+  "X*tan(delta_MS) = ", 4 
+   Rational[2, 3]^Rational[1, 2] $CellContext`X^2/(-2 + $CellContext`X^2)],
+  Editable->False]], "Print",
+ CellChangeTimes->{3.9938449691781588`*^9},
+ CellLabel->
+  "During evaluation of \
+In[56]:=",ExpressionUUID->"a690f74b-e62a-4f88-9832-649345fc748c"]
+}, Open  ]],
+
+Cell["\<\
+These two are still not equal to each other directly -- but check the \
+PRODUCT, matching the tan(delta_MS)=-1/tan(delta_AT) convention relation \
+established earlier this session (from comparing the two papers' respective \
+asymptotic S-matrix definitions):\
+\>", "Text",ExpressionUUID->"1b17f61d-74dd-45af-8507-2ab7f4d19ba5"],
+
+Cell[BoxData[
+ RowBox[{
+  RowBox[{"product", " ", "=", " ", 
+   RowBox[{"FullSimplify", "[", 
+    RowBox[{"tanATinX", "*", 
+     RowBox[{"tanMS", "[", "X", "]"}]}], "]"}]}], ";"}]], "Input",
+ CellLabel->"In[57]:=",ExpressionUUID->"744f06a9-2511-45d8-9a16-6085f57c8ade"],
+
+Cell[CellGroupData[{
+
+Cell[BoxData[
+ RowBox[{
+  RowBox[{"Print", "[", 
+   RowBox[{"\"\<tan(delta_AT)*tan(delta_MS) = \>\"", ",", " ", "product", ",",
+     " ", "\"\<  (should be -1)\>\""}], "]"}], ";"}]], "Input",
+ CellLabel->"In[58]:=",ExpressionUUID->"d6239d3d-0c94-45bb-9339-22bc8151ea01"],
+
+Cell[BoxData[
+ InterpretationBox[
+  RowBox[{"\<\"tan(delta_AT)*tan(delta_MS) = \"\>", "\[InvisibleSpace]", 
+   RowBox[{"-", "1"}], "\[InvisibleSpace]", "\<\"  (should be -1)\"\>"}],
+  SequenceForm["tan(delta_AT)*tan(delta_MS) = ", -1, "  (should be -1)"],
+  Editable->False]], "Print",
+ CellChangeTimes->{3.9938449691948023`*^9},
+ CellLabel->
+  "During evaluation of \
+In[58]:=",ExpressionUUID->"a1d66c87-8575-4dec-bf30-fe11d364e843"]
+}, Open  ]],
+
+Cell["\<\
+Confirmed exactly (symbolically, for all X): tan(delta_AT)*tan(delta_MS) = \
+-1. Amaya-Tapia's Eq. 61 and Mehta-Shepard's Eq. 10/12 ARE consistent, once \
+(a) aAT is correctly identified as 1/a2std rather than a2std itself, and (b) \
+the two papers' independently-known reciprocal phase-shift convention is \
+accounted for.\
+\>", "Text",ExpressionUUID->"1af65bbd-b469-4ad5-af75-50b67764f1d8"],
+
+Cell[CellGroupData[{
+
+Cell[BoxData[
+ RowBox[{"Plot", "[", 
+  RowBox[{
+   RowBox[{"Evaluate", "[", 
+    RowBox[{"{", 
+     RowBox[{
+      RowBox[{"tanMS", "[", "X", "]"}], ",", 
+      FractionBox[
+       RowBox[{"-", "1"}], "tanATinX"]}], "}"}], "]"}], ",", 
+   RowBox[{"{", 
+    RowBox[{"X", ",", "0", ",", "1"}], "}"}], ",", 
+   RowBox[{"PlotStyle", "->", 
+    RowBox[{"{", 
+     RowBox[{"Black", ",", "Red"}], "}"}]}], ",", 
+   RowBox[{"Frame", "->", "True"}]}], "]"}]], "Input",
+ CellChangeTimes->{{3.993845043031025*^9, 3.993845115082265*^9}},
+ CellLabel->"In[62]:=",ExpressionUUID->"c7a08c63-5d77-4e29-ad86-46652c6234a6"],
+
+Cell[BoxData[
+ GraphicsBox[
+  InterpretationBox[{
+    TagBox[{{{}, {}, 
+       TagBox[
+        {GrayLevel[0], AbsoluteThickness[1.6], Opacity[1.], Dashing[{}], 
+         CapForm["Butt"], LineBox[CompressedData["
+1:eJwVxX0803kcAHCP2cbJw0lLlM5DT3qQ9NzHHReJ8pDSi0TU2ZKondKda8tT
+idtyQkVEDx6OxYar1PdLTk/z1DhCwyyGzY+iRdru7o/362159JTPMQ01NTXP
+//y/+zFpGx7x2+muy7fyl4Q81XJeFNVHdQBjo9KYTJoT2pCXncOjusAvVe3t
+p2leaE9TZ2UudT8EfRZfCaEFo4Nhiifp1DDgee/VCaBFoXdrk53TqAzY3JPl
+EkxjonyTfUkp1AS4y/w4kEDjIBaJZ3uZmgHX14TaL6HnI/9Dt7kTk3dAWXnL
++E/zCqSrYgW6WnAh9ACnIJbxEFl7j0ufXeHD6IfqdkY7Rmebt0D21ENQeNmE
+eHv+jUz5hiJ1dQSQEVNFZ75E1WJnQcv2emjml/G9FzSjenqu2SFZA2yODzMo
+9mpD0zY75pedfA5OkemMiwwh0pgpNTCzfgURHPYb36YO5KgKrvYtF8BsGg0C
+tLuQIMGhuXFlC3j5MnNKtnSjJZyxmeLxVggyG9m5/n4vGlP0iTrWvYEax5k6
+7pQI3Rl9/Er/dyF0Jj3lXEX9SN/8PiGRtIOisqDOXluMUmlVx/Ot/oHCmvK1
+xtsG0SenUkn4hU5IdluXl5QuQQz7Bv6CZ11gRr8fm9X9HvWVN1xps+yGPwz8
+LKZ2DaMv9PabK873QAllfGlktRSt+l5HefxxL1iUhbc+WDCKXAssf6owFUEU
+NCY05I2hs+ZHlg0E9oGx6WzXwkVytFrmp9vp2Q+sH50cz2ePI+P5E6SG2X4Y
+HM15fX3ZBNJCN7nf5QxAGLEhpHJyAp1wePyWvEcMy+PYqrjuSVS6+2j+009i
+SEHvJ+1ffEDTY4sMhjIHIXfDxyhB+UdU5euqmeEiAdK+rrlw3hS64JaYxx+S
+wKxtzrWoimlk+c69qzDxPRQeom+NrPqEtm5KyKDaD4Fk2FYh61WgQIuWGXXh
+EDANmVJf5Wc0/SpNHMUahnr2GZ1TbrMoWyuI4WMlhSSfNr3UtC/IWFRVoNEg
+hebF8zaWvJtD2nGs/VuiRyD2Qptz2RElUisO4oqNRoEU3VRhI1Kh0ze4aUb1
+o+Ag0yuue62Gn6y6RDKMHAPTlGconaeODd1Pr76oL4PtMXeNpm5o4F67VmFs
+rQxWr08XBxRp4ge3wEoSJAeBiak4okYLH+Y6Gpor5aAVaufR1aGNmYm3Wb0l
+47B8U+yOHhsdXCY1v6nvQcA4M/krPY6EL+UmBov2EuA8eFivKJ6Ew3zk1uXe
+BMyjWScPXybhxbW1DzwPEiCYim48mUnCKeyAxtSjBFzll1zL4pJwuOP1SUos
+ARHl4uchYhJelvCtm849AkLWyHf17CZj5eZfv+ksIsDFn/ki3IuM38oH39wr
+JUA9lTf8+QAZcw7yDu+qIKD7RZK2ZRgZq1b6nEmsJeBtq7ac8xsZ97axb2kK
+CbAVmAxM8Mj4ryRFqLCDAHqMSrP4ERlnbDuyorCLgPjAwL7QOjLec3cN/wcR
+AS0LDzQONJPxo3NNL1kjBNjtHUpUjpBxpt1GtreMAJOXczmCCTKOFufstyQI
+SB45dz5XQcbLPSL68BQBNP8atqs2BWupt9/hKAjga5JeL9Wj4P6qbfTgWQJO
+GPYI54wouJZeuHbdVwI8fv5S2kOl4KwlutMqFQHmRRv9niyl4H8BBOKNmw==
+
+          "]]},
+        Annotation[#, "Charting`Private`Tag#1"]& ], 
+       TagBox[
+        {RGBColor[1, 0, 0], AbsoluteThickness[1.6], Opacity[1.], 
+         AbsoluteDashing[{6, 2}], CapForm["Butt"], LineBox[CompressedData["
+1:eJwVxX0803kcAHCP2cbJw0lLlM5DT3qQ9NzHHReJ8pDSi0TU2ZKondKda8tT
+idtyQkVEDx6OxYar1PdLTk/z1DhCwyyGzY+iRdru7o/362159JTPMQ01NTXP
+//y/+zFpGx7x2+muy7fyl4Q81XJeFNVHdQBjo9KYTJoT2pCXncOjusAvVe3t
+p2leaE9TZ2UudT8EfRZfCaEFo4Nhiifp1DDgee/VCaBFoXdrk53TqAzY3JPl
+EkxjonyTfUkp1AS4y/w4kEDjIBaJZ3uZmgHX14TaL6HnI/9Dt7kTk3dAWXnL
++E/zCqSrYgW6WnAh9ACnIJbxEFl7j0ufXeHD6IfqdkY7Rmebt0D21ENQeNmE
+eHv+jUz5hiJ1dQSQEVNFZ75E1WJnQcv2emjml/G9FzSjenqu2SFZA2yODzMo
+9mpD0zY75pedfA5OkemMiwwh0pgpNTCzfgURHPYb36YO5KgKrvYtF8BsGg0C
+tLuQIMGhuXFlC3j5MnNKtnSjJZyxmeLxVggyG9m5/n4vGlP0iTrWvYEax5k6
+7pQI3Rl9/Er/dyF0Jj3lXEX9SN/8PiGRtIOisqDOXluMUmlVx/Ot/oHCmvK1
+xtsG0SenUkn4hU5IdluXl5QuQQz7Bv6CZ11gRr8fm9X9HvWVN1xps+yGPwz8
+LKZ2DaMv9PabK873QAllfGlktRSt+l5HefxxL1iUhbc+WDCKXAssf6owFUEU
+NCY05I2hs+ZHlg0E9oGx6WzXwkVytFrmp9vp2Q+sH50cz2ePI+P5E6SG2X4Y
+HM15fX3ZBNJCN7nf5QxAGLEhpHJyAp1wePyWvEcMy+PYqrjuSVS6+2j+009i
+SEHvJ+1ffEDTY4sMhjIHIXfDxyhB+UdU5euqmeEiAdK+rrlw3hS64JaYxx+S
+wKxtzrWoimlk+c69qzDxPRQeom+NrPqEtm5KyKDaD4Fk2FYh61WgQIuWGXXh
+EDANmVJf5Wc0/SpNHMUahnr2GZ1TbrMoWyuI4WMlhSSfNr3UtC/IWFRVoNEg
+hebF8zaWvJtD2nGs/VuiRyD2Qptz2RElUisO4oqNRoEU3VRhI1Kh0ze4aUb1
+o+Ag0yuue62Gn6y6RDKMHAPTlGconaeODd1Pr76oL4PtMXeNpm5o4F67VmFs
+rQxWr08XBxRp4ge3wEoSJAeBiak4okYLH+Y6Gpor5aAVaufR1aGNmYm3Wb0l
+47B8U+yOHhsdXCY1v6nvQcA4M/krPY6EL+UmBov2EuA8eFivKJ6Ew3zk1uXe
+BMyjWScPXybhxbW1DzwPEiCYim48mUnCKeyAxtSjBFzll1zL4pJwuOP1SUos
+ARHl4uchYhJelvCtm849AkLWyHf17CZj5eZfv+ksIsDFn/ki3IuM38oH39wr
+JUA9lTf8+QAZcw7yDu+qIKD7RZK2ZRgZq1b6nEmsJeBtq7ac8xsZ97axb2kK
+CbAVmAxM8Mj4ryRFqLCDAHqMSrP4ERlnbDuyorCLgPjAwL7QOjLec3cN/wcR
+AS0LDzQONJPxo3NNL1kjBNjtHUpUjpBxpt1GtreMAJOXczmCCTKOFufstyQI
+SB45dz5XQcbLPSL68BQBNP8atqs2BWupt9/hKAjga5JeL9Wj4P6qbfTgWQJO
+GPYI54wouJZeuHbdVwI8fv5S2kOl4KwlutMqFQHmRRv9niyl4H8BBOKNmw==
+
+          "]]},
+        Annotation[#, "Charting`Private`Tag#2"]& ]}, {}},
+     {"WolframDynamicHighlight", <|
+      "Label" -> {"XYLabel"}, "Ball" -> {"InterpolatedBall"}|>}], 
+    StyleBox[
+     DynamicBox[(Charting`HighlightActionBox["DynamicHighlight", {}, 
+       Slot["HighlightElements"], 
+       Slot["LayoutOptions"], 
+       Slot["Meta"], 
+       Charting`HighlightActionFunction["DynamicHighlight", {{{{}, {}, 
+           Annotation[{
+             Directive[
+              Opacity[1.], 
+              CapForm["Butt"], 
+              AbsoluteThickness[1.6], 
+              AbsoluteDashing[{}], 
+              GrayLevel[0]], 
+             Line[CompressedData["
+1:eJwVxX0803kcAHCP2cbJw0lLlM5DT3qQ9NzHHReJ8pDSi0TU2ZKondKda8tT
+idtyQkVEDx6OxYar1PdLTk/z1DhCwyyGzY+iRdru7o/362159JTPMQ01NTXP
+//y/+zFpGx7x2+muy7fyl4Q81XJeFNVHdQBjo9KYTJoT2pCXncOjusAvVe3t
+p2leaE9TZ2UudT8EfRZfCaEFo4Nhiifp1DDgee/VCaBFoXdrk53TqAzY3JPl
+EkxjonyTfUkp1AS4y/w4kEDjIBaJZ3uZmgHX14TaL6HnI/9Dt7kTk3dAWXnL
++E/zCqSrYgW6WnAh9ACnIJbxEFl7j0ufXeHD6IfqdkY7Rmebt0D21ENQeNmE
+eHv+jUz5hiJ1dQSQEVNFZ75E1WJnQcv2emjml/G9FzSjenqu2SFZA2yODzMo
+9mpD0zY75pedfA5OkemMiwwh0pgpNTCzfgURHPYb36YO5KgKrvYtF8BsGg0C
+tLuQIMGhuXFlC3j5MnNKtnSjJZyxmeLxVggyG9m5/n4vGlP0iTrWvYEax5k6
+7pQI3Rl9/Er/dyF0Jj3lXEX9SN/8PiGRtIOisqDOXluMUmlVx/Ot/oHCmvK1
+xtsG0SenUkn4hU5IdluXl5QuQQz7Bv6CZ11gRr8fm9X9HvWVN1xps+yGPwz8
+LKZ2DaMv9PabK873QAllfGlktRSt+l5HefxxL1iUhbc+WDCKXAssf6owFUEU
+NCY05I2hs+ZHlg0E9oGx6WzXwkVytFrmp9vp2Q+sH50cz2ePI+P5E6SG2X4Y
+HM15fX3ZBNJCN7nf5QxAGLEhpHJyAp1wePyWvEcMy+PYqrjuSVS6+2j+009i
+SEHvJ+1ffEDTY4sMhjIHIXfDxyhB+UdU5euqmeEiAdK+rrlw3hS64JaYxx+S
+wKxtzrWoimlk+c69qzDxPRQeom+NrPqEtm5KyKDaD4Fk2FYh61WgQIuWGXXh
+EDANmVJf5Wc0/SpNHMUahnr2GZ1TbrMoWyuI4WMlhSSfNr3UtC/IWFRVoNEg
+hebF8zaWvJtD2nGs/VuiRyD2Qptz2RElUisO4oqNRoEU3VRhI1Kh0ze4aUb1
+o+Ag0yuue62Gn6y6RDKMHAPTlGconaeODd1Pr76oL4PtMXeNpm5o4F67VmFs
+rQxWr08XBxRp4ge3wEoSJAeBiak4okYLH+Y6Gpor5aAVaufR1aGNmYm3Wb0l
+47B8U+yOHhsdXCY1v6nvQcA4M/krPY6EL+UmBov2EuA8eFivKJ6Ew3zk1uXe
+BMyjWScPXybhxbW1DzwPEiCYim48mUnCKeyAxtSjBFzll1zL4pJwuOP1SUos
+ARHl4uchYhJelvCtm849AkLWyHf17CZj5eZfv+ksIsDFn/ki3IuM38oH39wr
+JUA9lTf8+QAZcw7yDu+qIKD7RZK2ZRgZq1b6nEmsJeBtq7ac8xsZ97axb2kK
+CbAVmAxM8Mj4ryRFqLCDAHqMSrP4ERlnbDuyorCLgPjAwL7QOjLec3cN/wcR
+AS0LDzQONJPxo3NNL1kjBNjtHUpUjpBxpt1GtreMAJOXczmCCTKOFufstyQI
+SB45dz5XQcbLPSL68BQBNP8atqs2BWupt9/hKAjga5JeL9Wj4P6qbfTgWQJO
+GPYI54wouJZeuHbdVwI8fv5S2kOl4KwlutMqFQHmRRv9niyl4H8BBOKNmw==
+
+              "]]}, "Charting`Private`Tag#1"], 
+           Annotation[{
+             Directive[
+              Opacity[1.], 
+              CapForm["Butt"], 
+              AbsoluteThickness[1.6], 
+              AbsoluteDashing[{6, 2}], 
+              RGBColor[1, 0, 0]], 
+             Line[CompressedData["
+1:eJwVxX0803kcAHCP2cbJw0lLlM5DT3qQ9NzHHReJ8pDSi0TU2ZKondKda8tT
+idtyQkVEDx6OxYar1PdLTk/z1DhCwyyGzY+iRdru7o/362159JTPMQ01NTXP
+//y/+zFpGx7x2+muy7fyl4Q81XJeFNVHdQBjo9KYTJoT2pCXncOjusAvVe3t
+p2leaE9TZ2UudT8EfRZfCaEFo4Nhiifp1DDgee/VCaBFoXdrk53TqAzY3JPl
+EkxjonyTfUkp1AS4y/w4kEDjIBaJZ3uZmgHX14TaL6HnI/9Dt7kTk3dAWXnL
++E/zCqSrYgW6WnAh9ACnIJbxEFl7j0ufXeHD6IfqdkY7Rmebt0D21ENQeNmE
+eHv+jUz5hiJ1dQSQEVNFZ75E1WJnQcv2emjml/G9FzSjenqu2SFZA2yODzMo
+9mpD0zY75pedfA5OkemMiwwh0pgpNTCzfgURHPYb36YO5KgKrvYtF8BsGg0C
+tLuQIMGhuXFlC3j5MnNKtnSjJZyxmeLxVggyG9m5/n4vGlP0iTrWvYEax5k6
+7pQI3Rl9/Er/dyF0Jj3lXEX9SN/8PiGRtIOisqDOXluMUmlVx/Ot/oHCmvK1
+xtsG0SenUkn4hU5IdluXl5QuQQz7Bv6CZ11gRr8fm9X9HvWVN1xps+yGPwz8
+LKZ2DaMv9PabK873QAllfGlktRSt+l5HefxxL1iUhbc+WDCKXAssf6owFUEU
+NCY05I2hs+ZHlg0E9oGx6WzXwkVytFrmp9vp2Q+sH50cz2ePI+P5E6SG2X4Y
+HM15fX3ZBNJCN7nf5QxAGLEhpHJyAp1wePyWvEcMy+PYqrjuSVS6+2j+009i
+SEHvJ+1ffEDTY4sMhjIHIXfDxyhB+UdU5euqmeEiAdK+rrlw3hS64JaYxx+S
+wKxtzrWoimlk+c69qzDxPRQeom+NrPqEtm5KyKDaD4Fk2FYh61WgQIuWGXXh
+EDANmVJf5Wc0/SpNHMUahnr2GZ1TbrMoWyuI4WMlhSSfNr3UtC/IWFRVoNEg
+hebF8zaWvJtD2nGs/VuiRyD2Qptz2RElUisO4oqNRoEU3VRhI1Kh0ze4aUb1
+o+Ag0yuue62Gn6y6RDKMHAPTlGconaeODd1Pr76oL4PtMXeNpm5o4F67VmFs
+rQxWr08XBxRp4ge3wEoSJAeBiak4okYLH+Y6Gpor5aAVaufR1aGNmYm3Wb0l
+47B8U+yOHhsdXCY1v6nvQcA4M/krPY6EL+UmBov2EuA8eFivKJ6Ew3zk1uXe
+BMyjWScPXybhxbW1DzwPEiCYim48mUnCKeyAxtSjBFzll1zL4pJwuOP1SUos
+ARHl4uchYhJelvCtm849AkLWyHf17CZj5eZfv+ksIsDFn/ki3IuM38oH39wr
+JUA9lTf8+QAZcw7yDu+qIKD7RZK2ZRgZq1b6nEmsJeBtq7ac8xsZ97axb2kK
+CbAVmAxM8Mj4ryRFqLCDAHqMSrP4ERlnbDuyorCLgPjAwL7QOjLec3cN/wcR
+AS0LDzQONJPxo3NNL1kjBNjtHUpUjpBxpt1GtreMAJOXczmCCTKOFufstyQI
+SB45dz5XQcbLPSL68BQBNP8atqs2BWupt9/hKAjga5JeL9Wj4P6qbfTgWQJO
+GPYI54wouJZeuHbdVwI8fv5S2kOl4KwlutMqFQHmRRv9niyl4H8BBOKNmw==
+
+              "]]}, "Charting`Private`Tag#2"]}}, {}}, <|
+        "HighlightElements" -> <|
+          "Label" -> {"XYLabel"}, "Ball" -> {"InterpolatedBall"}|>, 
+         "LayoutOptions" -> <|
+          "PanelPlotLayout" -> <||>, 
+           "PlotRange" -> {{0, 1}, {-3.2659861237525676`, 0.}}, 
+           "Frame" -> {{True, True}, {True, True}}, "AxesOrigin" -> {0, 0}, 
+           "ImageSize" -> {360, 360/GoldenRatio}, "Axes" -> {True, True}, 
+           "LabelStyle" -> {
+             RGBColor[
+             0.00010000076130382223`, 0.00010000076130382223`, 
+              0.00010000076130382223`]}, "AspectRatio" -> GoldenRatio^(-1), 
+           "DefaultStyle" -> {
+             Directive[
+              Opacity[1.], 
+              CapForm["Butt"], 
+              AbsoluteThickness[1.6], 
+              AbsoluteDashing[{6, 2}], 
+              RGBColor[1, 0, 0]], 
+             Directive[
+              Opacity[1.], 
+              CapForm["Butt"], 
+              AbsoluteThickness[1.6], 
+              AbsoluteDashing[{}], 
+              GrayLevel[0]]}, 
+           "HighlightLabelingFunctions" -> <|"CoordinatesToolOptions" -> ({
+               (Identity[#]& )[
+                Part[#, 1]], 
+               (Identity[#]& )[
+                Part[#, 2]]}& ), 
+             "ScalingFunctions" -> {{Identity, Identity}, {
+               Identity, Identity}}|>, "Primitives" -> {}, "GCFlag" -> 
+           False|>, 
+         "Meta" -> <|
+          "DefaultHighlight" -> {"Dynamic", None}, "Index" -> {}, "Function" -> 
+           Plot, "GroupHighlight" -> False|>|>]]& )[<|
+       "HighlightElements" -> <|
+         "Label" -> {"XYLabel"}, "Ball" -> {"InterpolatedBall"}|>, 
+        "LayoutOptions" -> <|
+         "PanelPlotLayout" -> <||>, 
+          "PlotRange" -> {{0, 1}, {-3.2659861237525676`, 0.}}, 
+          "Frame" -> {{True, True}, {True, True}}, "AxesOrigin" -> {0, 0}, 
+          "ImageSize" -> {360, 360/GoldenRatio}, "Axes" -> {True, True}, 
+          "LabelStyle" -> {
+            RGBColor[
+            0.00010000076130382223`, 0.00010000076130382223`, 
+             0.00010000076130382223`]}, "AspectRatio" -> GoldenRatio^(-1), 
+          "DefaultStyle" -> {
+            Directive[
+             Opacity[1.], 
+             CapForm["Butt"], 
+             AbsoluteThickness[1.6], 
+             AbsoluteDashing[{6, 2}], 
+             RGBColor[1, 0, 0]], 
+            Directive[
+             Opacity[1.], 
+             CapForm["Butt"], 
+             AbsoluteThickness[1.6], 
+             AbsoluteDashing[{}], 
+             GrayLevel[0]]}, 
+          "HighlightLabelingFunctions" -> <|"CoordinatesToolOptions" -> ({
+              (Identity[#]& )[
+               Part[#, 1]], 
+              (Identity[#]& )[
+               Part[#, 2]]}& ), 
+            "ScalingFunctions" -> {{Identity, Identity}, {
+              Identity, Identity}}|>, "Primitives" -> {}, "GCFlag" -> False|>,
+         "Meta" -> <|
+         "DefaultHighlight" -> {"Dynamic", None}, "Index" -> {}, "Function" -> 
+          Plot, "GroupHighlight" -> False|>|>],
+      ImageSizeCache->{{4.503599627370496*^15, -4.503599627370496*^15}, {
+       4.503599627370496*^15, -4.503599627370496*^15}}],
+     Selectable->False]},
+   Annotation[{{{{}, {}, 
+       Annotation[{
+         Directive[
+          Opacity[1.], 
+          CapForm["Butt"], 
+          AbsoluteThickness[1.6], 
+          AbsoluteDashing[{}], 
+          GrayLevel[0]], 
+         Line[CompressedData["
+1:eJwVxX0803kcAHCP2cbJw0lLlM5DT3qQ9NzHHReJ8pDSi0TU2ZKondKda8tT
+idtyQkVEDx6OxYar1PdLTk/z1DhCwyyGzY+iRdru7o/362159JTPMQ01NTXP
+//y/+zFpGx7x2+muy7fyl4Q81XJeFNVHdQBjo9KYTJoT2pCXncOjusAvVe3t
+p2leaE9TZ2UudT8EfRZfCaEFo4Nhiifp1DDgee/VCaBFoXdrk53TqAzY3JPl
+EkxjonyTfUkp1AS4y/w4kEDjIBaJZ3uZmgHX14TaL6HnI/9Dt7kTk3dAWXnL
++E/zCqSrYgW6WnAh9ACnIJbxEFl7j0ufXeHD6IfqdkY7Rmebt0D21ENQeNmE
+eHv+jUz5hiJ1dQSQEVNFZ75E1WJnQcv2emjml/G9FzSjenqu2SFZA2yODzMo
+9mpD0zY75pedfA5OkemMiwwh0pgpNTCzfgURHPYb36YO5KgKrvYtF8BsGg0C
+tLuQIMGhuXFlC3j5MnNKtnSjJZyxmeLxVggyG9m5/n4vGlP0iTrWvYEax5k6
+7pQI3Rl9/Er/dyF0Jj3lXEX9SN/8PiGRtIOisqDOXluMUmlVx/Ot/oHCmvK1
+xtsG0SenUkn4hU5IdluXl5QuQQz7Bv6CZ11gRr8fm9X9HvWVN1xps+yGPwz8
+LKZ2DaMv9PabK873QAllfGlktRSt+l5HefxxL1iUhbc+WDCKXAssf6owFUEU
+NCY05I2hs+ZHlg0E9oGx6WzXwkVytFrmp9vp2Q+sH50cz2ePI+P5E6SG2X4Y
+HM15fX3ZBNJCN7nf5QxAGLEhpHJyAp1wePyWvEcMy+PYqrjuSVS6+2j+009i
+SEHvJ+1ffEDTY4sMhjIHIXfDxyhB+UdU5euqmeEiAdK+rrlw3hS64JaYxx+S
+wKxtzrWoimlk+c69qzDxPRQeom+NrPqEtm5KyKDaD4Fk2FYh61WgQIuWGXXh
+EDANmVJf5Wc0/SpNHMUahnr2GZ1TbrMoWyuI4WMlhSSfNr3UtC/IWFRVoNEg
+hebF8zaWvJtD2nGs/VuiRyD2Qptz2RElUisO4oqNRoEU3VRhI1Kh0ze4aUb1
+o+Ag0yuue62Gn6y6RDKMHAPTlGconaeODd1Pr76oL4PtMXeNpm5o4F67VmFs
+rQxWr08XBxRp4ge3wEoSJAeBiak4okYLH+Y6Gpor5aAVaufR1aGNmYm3Wb0l
+47B8U+yOHhsdXCY1v6nvQcA4M/krPY6EL+UmBov2EuA8eFivKJ6Ew3zk1uXe
+BMyjWScPXybhxbW1DzwPEiCYim48mUnCKeyAxtSjBFzll1zL4pJwuOP1SUos
+ARHl4uchYhJelvCtm849AkLWyHf17CZj5eZfv+ksIsDFn/ki3IuM38oH39wr
+JUA9lTf8+QAZcw7yDu+qIKD7RZK2ZRgZq1b6nEmsJeBtq7ac8xsZ97axb2kK
+CbAVmAxM8Mj4ryRFqLCDAHqMSrP4ERlnbDuyorCLgPjAwL7QOjLec3cN/wcR
+AS0LDzQONJPxo3NNL1kjBNjtHUpUjpBxpt1GtreMAJOXczmCCTKOFufstyQI
+SB45dz5XQcbLPSL68BQBNP8atqs2BWupt9/hKAjga5JeL9Wj4P6qbfTgWQJO
+GPYI54wouJZeuHbdVwI8fv5S2kOl4KwlutMqFQHmRRv9niyl4H8BBOKNmw==
+
+          "]]}, "Charting`Private`Tag#1"], 
+       Annotation[{
+         Directive[
+          Opacity[1.], 
+          CapForm["Butt"], 
+          AbsoluteThickness[1.6], 
+          AbsoluteDashing[{6, 2}], 
+          RGBColor[1, 0, 0]], 
+         Line[CompressedData["
+1:eJwVxX0803kcAHCP2cbJw0lLlM5DT3qQ9NzHHReJ8pDSi0TU2ZKondKda8tT
+idtyQkVEDx6OxYar1PdLTk/z1DhCwyyGzY+iRdru7o/362159JTPMQ01NTXP
+//y/+zFpGx7x2+muy7fyl4Q81XJeFNVHdQBjo9KYTJoT2pCXncOjusAvVe3t
+p2leaE9TZ2UudT8EfRZfCaEFo4Nhiifp1DDgee/VCaBFoXdrk53TqAzY3JPl
+EkxjonyTfUkp1AS4y/w4kEDjIBaJZ3uZmgHX14TaL6HnI/9Dt7kTk3dAWXnL
++E/zCqSrYgW6WnAh9ACnIJbxEFl7j0ufXeHD6IfqdkY7Rmebt0D21ENQeNmE
+eHv+jUz5hiJ1dQSQEVNFZ75E1WJnQcv2emjml/G9FzSjenqu2SFZA2yODzMo
+9mpD0zY75pedfA5OkemMiwwh0pgpNTCzfgURHPYb36YO5KgKrvYtF8BsGg0C
+tLuQIMGhuXFlC3j5MnNKtnSjJZyxmeLxVggyG9m5/n4vGlP0iTrWvYEax5k6
+7pQI3Rl9/Er/dyF0Jj3lXEX9SN/8PiGRtIOisqDOXluMUmlVx/Ot/oHCmvK1
+xtsG0SenUkn4hU5IdluXl5QuQQz7Bv6CZ11gRr8fm9X9HvWVN1xps+yGPwz8
+LKZ2DaMv9PabK873QAllfGlktRSt+l5HefxxL1iUhbc+WDCKXAssf6owFUEU
+NCY05I2hs+ZHlg0E9oGx6WzXwkVytFrmp9vp2Q+sH50cz2ePI+P5E6SG2X4Y
+HM15fX3ZBNJCN7nf5QxAGLEhpHJyAp1wePyWvEcMy+PYqrjuSVS6+2j+009i
+SEHvJ+1ffEDTY4sMhjIHIXfDxyhB+UdU5euqmeEiAdK+rrlw3hS64JaYxx+S
+wKxtzrWoimlk+c69qzDxPRQeom+NrPqEtm5KyKDaD4Fk2FYh61WgQIuWGXXh
+EDANmVJf5Wc0/SpNHMUahnr2GZ1TbrMoWyuI4WMlhSSfNr3UtC/IWFRVoNEg
+hebF8zaWvJtD2nGs/VuiRyD2Qptz2RElUisO4oqNRoEU3VRhI1Kh0ze4aUb1
+o+Ag0yuue62Gn6y6RDKMHAPTlGconaeODd1Pr76oL4PtMXeNpm5o4F67VmFs
+rQxWr08XBxRp4ge3wEoSJAeBiak4okYLH+Y6Gpor5aAVaufR1aGNmYm3Wb0l
+47B8U+yOHhsdXCY1v6nvQcA4M/krPY6EL+UmBov2EuA8eFivKJ6Ew3zk1uXe
+BMyjWScPXybhxbW1DzwPEiCYim48mUnCKeyAxtSjBFzll1zL4pJwuOP1SUos
+ARHl4uchYhJelvCtm849AkLWyHf17CZj5eZfv+ksIsDFn/ki3IuM38oH39wr
+JUA9lTf8+QAZcw7yDu+qIKD7RZK2ZRgZq1b6nEmsJeBtq7ac8xsZ97axb2kK
+CbAVmAxM8Mj4ryRFqLCDAHqMSrP4ERlnbDuyorCLgPjAwL7QOjLec3cN/wcR
+AS0LDzQONJPxo3NNL1kjBNjtHUpUjpBxpt1GtreMAJOXczmCCTKOFufstyQI
+SB45dz5XQcbLPSL68BQBNP8atqs2BWupt9/hKAjga5JeL9Wj4P6qbfTgWQJO
+GPYI54wouJZeuHbdVwI8fv5S2kOl4KwlutMqFQHmRRv9niyl4H8BBOKNmw==
+
+          "]]}, "Charting`Private`Tag#2"]}}, {}}, <|
+    "HighlightElements" -> <|
+      "Label" -> {"XYLabel"}, "Ball" -> {"InterpolatedBall"}|>, 
+     "LayoutOptions" -> <|
+      "PanelPlotLayout" -> <||>, 
+       "PlotRange" -> {{0, 1}, {-3.2659861237525676`, 0.}}, 
+       "Frame" -> {{True, True}, {True, True}}, "AxesOrigin" -> {0, 0}, 
+       "ImageSize" -> {360, 360/GoldenRatio}, "Axes" -> {True, True}, 
+       "LabelStyle" -> {
+         RGBColor[
+         0.00010000076130382223`, 0.00010000076130382223`, 
+          0.00010000076130382223`]}, "AspectRatio" -> GoldenRatio^(-1), 
+       "DefaultStyle" -> {
+         Directive[
+          Opacity[1.], 
+          CapForm["Butt"], 
+          AbsoluteThickness[1.6], 
+          AbsoluteDashing[{6, 2}], 
+          RGBColor[1, 0, 0]], 
+         Directive[
+          Opacity[1.], 
+          CapForm["Butt"], 
+          AbsoluteThickness[1.6], 
+          AbsoluteDashing[{}], 
+          GrayLevel[0]]}, 
+       "HighlightLabelingFunctions" -> <|"CoordinatesToolOptions" -> ({
+           (Identity[#]& )[
+            Part[#, 1]], 
+           (Identity[#]& )[
+            Part[#, 2]]}& ), 
+         "ScalingFunctions" -> {{Identity, Identity}, {Identity, Identity}}|>,
+        "Primitives" -> {}, "GCFlag" -> False|>, 
+     "Meta" -> <|
+      "DefaultHighlight" -> {"Dynamic", None}, "Index" -> {}, "Function" -> 
+       Plot, "GroupHighlight" -> False|>|>, "DynamicHighlight"]],
+  AspectRatio->NCache[GoldenRatio^(-1), 0.6180339887498948],
+  Axes->{True, True},
+  AxesLabel->{None, None},
+  AxesOrigin->{0, 0},
+  AxesStyle->RGBColor[
+   0.00010000076130382223`, 0.00010000076130382223`, 0.00010000076130382223`],
+  
+  BaseStyle->RGBColor[
+   0.00010000076130382223`, 0.00010000076130382223`, 0.00010000076130382223`],
+  
+  DefaultBaseStyle->{"PlotGraphics", "Graphics"},
+  DisplayFunction->Identity,
+  Frame->{{True, True}, {True, True}},
+  FrameLabel->{{None, None}, {None, None}},
+  FrameStyle->RGBColor[
+   0.00010000076130382223`, 0.00010000076130382223`, 0.00010000076130382223`],
+  
+  FrameTicks->{{Automatic, Automatic}, {Automatic, Automatic}},
+  FrameTicksStyle->RGBColor[
+   0.00010000076130382223`, 0.00010000076130382223`, 0.00010000076130382223`],
+  
+  GridLines->{None, None},
+  GridLinesStyle->Directive[
+    RGBColor[
+    0.00010000076130382223`, 0.00010000076130382223`, 
+     0.00010000076130382223`], 
+    AbsoluteThickness[1], 
+    AbsoluteDashing[{1, 2}]],
+  ImagePadding->All,
+  LabelStyle->{
+    RGBColor[
+    0.00010000076130382223`, 0.00010000076130382223`, 
+     0.00010000076130382223`]},
+  Method->{
+   "DefaultBoundaryStyle" -> Automatic, 
+    "DefaultGraphicsInteraction" -> {
+     "Version" -> 1.2, "TrackMousePosition" -> {True, False}, 
+      "Effects" -> {
+       "Highlight" -> {"ratio" -> 2}, "HighlightPoint" -> {"ratio" -> 2}, 
+        "Droplines" -> {
+         "freeformCursorMode" -> True, 
+          "placement" -> {"x" -> "All", "y" -> "None"}}}}, "DefaultMeshStyle" -> 
+    AbsolutePointSize[6], "ScalingFunctions" -> None, 
+    "CoordinatesToolOptions" -> {"DisplayFunction" -> ({
+        (Identity[#]& )[
+         Part[#, 1]], 
+        (Identity[#]& )[
+         Part[#, 2]]}& ), "CopiedValueFunction" -> ({
+        (Identity[#]& )[
+         Part[#, 1]], 
+        (Identity[#]& )[
+         Part[#, 2]]}& )}},
+  PlotInteractivity:>True,
+  PlotRange->{{0, 1}, {-3.2659861237525676`, 0.}},
+  PlotRangeClipping->True,
+  PlotRangePadding->{{
+     Scaled[0.02], 
+     Scaled[0.02]}, {
+     Scaled[0.05], 
+     Scaled[0.05]}},
+  Ticks->{Automatic, Automatic},
+  TicksStyle->RGBColor[
+   0.00010000076130382223`, 0.00010000076130382223`, 
+    0.00010000076130382223`]]], "Output",
+ CellChangeTimes->{
+  3.993845057434029*^9, {3.993845090043209*^9, 3.993845115872401*^9}},
+ CellLabel->"Out[62]=",ExpressionUUID->"c3134ba6-3ba0-4a9d-9b24-e1bdf3b6485d"]
+}, Open  ]]
+}, Open  ]]
+}, Open  ]]
+},
+WindowSize->{1661, 911},
+WindowMargins->{{12, Automatic}, {Automatic, 24}},
+Magnification:>2. Inherited,
+FrontEndVersion->"15.0 for Mac OS X ARM (64-bit) (May 19, 2026)",
+StyleDefinitions->FrontEnd`FileName[{"Article"}, "JournalArticle.nb", 
+  CharacterEncoding -> "UTF-8"],
+ExpressionUUID->"563d06ec-8ccb-4ab6-8c3c-f3220d70f0c6"
+]
+(* End of Notebook Content *)
+
+(* Internal cache information *)
+(*CellTagsOutline
+CellTagsIndex->{}
+*)
+(*CellTagsIndex
+CellTagsIndex->{}
+*)
+(*NotebookFileOutline
+Notebook[{
+Cell[CellGroupData[{
+Cell[576, 22, 129, 0, 212, "Title",ExpressionUUID->"28164a3e-0c86-41ea-b58b-3e49334818a4"],
+Cell[708, 24, 636, 9, 130, "Text",ExpressionUUID->"deb01350-454a-4d7b-b148-7eac3edd2c47"],
+Cell[CellGroupData[{
+Cell[1369, 37, 151, 2, 94, "Section",ExpressionUUID->"d9348da8-63bb-4c2e-9bec-8b276c55039b"],
+Cell[1523, 41, 307, 5, 100, "Text",ExpressionUUID->"e9103de7-b626-49cb-92f9-b485d10b3ef7"],
+Cell[1833, 48, 1322, 41, 97, "Input",ExpressionUUID->"67ddecc6-4e46-473d-b8fd-0f129d3a1752"],
+Cell[3158, 91, 245, 6, 60, "Input",ExpressionUUID->"964c8a0a-a303-46bd-b67b-f377aa504095"],
+Cell[3406, 99, 443, 13, 60, "Input",ExpressionUUID->"cc70ca75-4fce-4613-831b-2f867b6b113a"],
+Cell[3852, 114, 361, 5, 70, "Text",ExpressionUUID->"2881429e-0a4d-43dd-b737-3e86af8fddf3"],
+Cell[4216, 121, 459, 14, 60, "Input",ExpressionUUID->"f6b2493c-f05e-4b68-9adb-e68b6dad4d3f"]
+}, Open  ]],
+Cell[CellGroupData[{
+Cell[4712, 140, 104, 0, 94, "Section",ExpressionUUID->"b52f9013-3f1a-46ad-b9ae-77fb51b64178"],
+Cell[4819, 142, 190, 3, 40, "Text",ExpressionUUID->"6b51105c-5a8c-4564-9d87-2be516de17b2"],
+Cell[5012, 147, 581, 15, 60, "Input",ExpressionUUID->"f9dc1fa3-9a2f-407f-8e7a-b1ca7073d8ec"],
+Cell[5596, 164, 317, 8, 60, "Input",ExpressionUUID->"d4bf3932-5599-4ed3-bb8b-6203ef38f4ac"],
+Cell[5916, 174, 282, 4, 70, "Text",ExpressionUUID->"07ea88da-1c02-4970-846c-a5f56f88fbbb"],
+Cell[CellGroupData[{
+Cell[6223, 182, 312, 7, 60, "Input",ExpressionUUID->"e35c1793-cf14-4b5a-b69e-df65189a4446"],
+Cell[6538, 191, 594, 18, 90, "Print",ExpressionUUID->"81f17743-0ecf-4a6c-8775-a7fe122d8d62"]
+}, Open  ]],
+Cell[CellGroupData[{
+Cell[7169, 214, 510, 14, 60, "Input",ExpressionUUID->"a85c8e8f-1eff-4f18-9098-ec9f61b5d43a"],
+Cell[7682, 230, 604, 18, 90, "Print",ExpressionUUID->"850262cf-675d-4531-b712-ad4d62de5d84"]
+}, Open  ]],
+Cell[8301, 251, 259, 4, 70, "Text",ExpressionUUID->"723bbd39-843f-49d2-84fe-2e54a267b971"]
+}, Open  ]],
+Cell[CellGroupData[{
+Cell[8597, 260, 176, 3, 94, "Section",ExpressionUUID->"82d8f0fd-43c1-40b9-bc50-d31d89cff638"],
+Cell[8776, 265, 168, 3, 40, "Text",ExpressionUUID->"a886cb3a-a4cd-4012-b862-cffc2e725ec3"],
+Cell[8947, 270, 318, 8, 60, "Input",ExpressionUUID->"e70d9623-54ad-4335-9eec-662cec4ebb47"],
+Cell[9268, 280, 279, 7, 60, "Input",ExpressionUUID->"f976c071-25da-4a66-8af3-e1085f7628e8"],
+Cell[CellGroupData[{
+Cell[9572, 291, 296, 6, 60, "Input",ExpressionUUID->"fcf4f037-5b84-46a9-8aca-ecb0277685bf"],
+Cell[9871, 299, 630, 18, 77, "Print",ExpressionUUID->"26e452ea-3c3c-4a13-9983-7cc67d3046de"]
+}, Open  ]],
+Cell[CellGroupData[{
+Cell[10538, 322, 312, 7, 60, "Input",ExpressionUUID->"0d8c92ff-9648-41c4-8d1c-e8b2985327cf"],
+Cell[10853, 331, 594, 18, 90, "Print",ExpressionUUID->"67ff595b-5a67-4dce-b68d-0bcfade11f19"]
+}, Open  ]],
+Cell[11462, 352, 292, 4, 70, "Text",ExpressionUUID->"3c8fa0f3-d59f-440d-88ee-6cfc6301b66d"]
+}, Open  ]],
+Cell[CellGroupData[{
+Cell[11791, 361, 147, 2, 94, "Section",ExpressionUUID->"467aef31-a7d9-4be5-b598-6101c9d9711d"],
+Cell[11941, 365, 449, 6, 100, "Text",ExpressionUUID->"4fa83b5c-f790-4234-8060-e1bfe6cf83a0"],
+Cell[12393, 373, 182, 4, 60, "Input",ExpressionUUID->"26a4efee-405f-4664-a750-a4557dead97b"],
+Cell[12578, 379, 388, 11, 60, "Input",ExpressionUUID->"1fc639ff-c6b5-40a9-9cbf-574d8b0b941b"],
+Cell[12969, 392, 306, 9, 60, "Input",ExpressionUUID->"9132a351-c9e4-42a5-b79a-16d6e500a7b0"],
+Cell[13278, 403, 315, 9, 60, "Input",ExpressionUUID->"dfcf5a19-ff5f-4d18-b210-df05999e99e1"],
+Cell[13596, 414, 407, 11, 60, "Input",ExpressionUUID->"5302825f-ea7c-4daf-820d-ada503fd9a90"],
+Cell[14006, 427, 451, 13, 60, "Input",ExpressionUUID->"e2903a97-d4e5-4eb4-bcfe-f04fc8f3b77b"],
+Cell[CellGroupData[{
+Cell[14482, 444, 441, 8, 97, "Input",ExpressionUUID->"7808758c-f69f-462b-9cc9-39865f69ec22"],
+Cell[14926, 454, 834, 20, 69, "Print",ExpressionUUID->"5a0262d5-2480-45ef-b01e-f5509fff9ffa"]
+}, Open  ]],
+Cell[CellGroupData[{
+Cell[15797, 479, 532, 12, 97, "Input",ExpressionUUID->"10e96fda-89ff-4bc6-8bc7-e3248cb94fdb"],
+Cell[16332, 493, 878, 22, 69, "Print",ExpressionUUID->"45c8000d-edee-4739-9f4e-1535926e776d"]
+}, Open  ]],
+Cell[17225, 518, 256, 4, 70, "Text",ExpressionUUID->"8aa0a14d-1b7d-4b23-a02e-d2a4696bcf37"]
+}, Open  ]],
+Cell[CellGroupData[{
+Cell[17518, 527, 161, 3, 94, "Section",ExpressionUUID->"7ba21a1d-b1fa-49e7-be69-38ef2dd7a614"],
+Cell[17682, 532, 342, 5, 70, "Text",ExpressionUUID->"1c75e2bf-cd02-4dae-bc55-0a94b9b6cced"],
+Cell[18027, 539, 234, 5, 60, "Input",ExpressionUUID->"3687e7aa-1f54-4f9c-95f6-a1cc14235211"],
+Cell[CellGroupData[{
+Cell[18286, 548, 256, 5, 60, "Input",ExpressionUUID->"43daa125-6629-4b2f-ba74-32637d68357e"],
+Cell[18545, 555, 477, 12, 46, "Print",ExpressionUUID->"f15749f9-60e2-4df6-bec3-2035011c81b0"]
+}, Open  ]],
+Cell[19037, 570, 294, 4, 70, "Text",ExpressionUUID->"206659b7-e764-42ed-8d0b-b606e7013c53"],
+Cell[19334, 576, 209, 5, 60, "Input",ExpressionUUID->"9bb21865-3972-4f11-b0ba-0eff41075524"],
+Cell[CellGroupData[{
+Cell[19568, 585, 369, 7, 97, "Input",ExpressionUUID->"db82a790-4f85-4899-b3b3-ecdf0738db16"],
+Cell[19940, 594, 578, 15, 60, "Print",ExpressionUUID->"8edb7c20-a91f-4f96-99d1-9a770ff8f5ea"]
+}, Open  ]],
+Cell[CellGroupData[{
+Cell[20555, 614, 521, 14, 60, "Input",ExpressionUUID->"c00b8638-f3f4-4fc1-a12b-3005c6151318"],
+Cell[21079, 630, 390, 10, 52, "Message",ExpressionUUID->"592c7c00-6d9e-46d5-ad75-4da9c99695ba"]
+}, Open  ]],
+Cell[CellGroupData[{
+Cell[21506, 645, 422, 10, 97, "Input",ExpressionUUID->"ab6b064e-dde0-4fa0-92c9-c25e35837371"],
+Cell[21931, 657, 712, 19, 69, "Print",ExpressionUUID->"432ce25c-454a-4a16-9bcb-8226de27b93f"]
+}, Open  ]],
+Cell[22658, 679, 191, 3, 40, "Text",ExpressionUUID->"9fbf322a-c7e3-41c6-aae7-0cb543a6f02b"],
+Cell[22852, 684, 452, 13, 60, "Input",ExpressionUUID->"6250c7ce-34b1-43b9-9ce1-595ef105e559"],
+Cell[CellGroupData[{
+Cell[23329, 701, 375, 7, 135, "Input",ExpressionUUID->"10d9176e-9722-4e7c-ab9b-23d213f313eb"],
+Cell[23707, 710, 781, 18, 121, "Print",ExpressionUUID->"7ae4addf-7e0a-4ec5-922d-865049c58e5f"]
+}, Open  ]],
+Cell[CellGroupData[{
+Cell[24525, 733, 523, 12, 97, "Input",ExpressionUUID->"5d5f6b83-5225-40b9-895c-3a3720f3eeb2"],
+Cell[25051, 747, 834, 21, 63, "Print",ExpressionUUID->"3fd4da1a-c213-4060-b4d7-cde94a2dcbd5"]
+}, Open  ]],
+Cell[25900, 771, 324, 5, 70, "Text",ExpressionUUID->"82e9fd4f-4043-4850-bbc9-3d23231a675c"]
+}, Open  ]],
+Cell[CellGroupData[{
+Cell[26261, 781, 154, 2, 94, "Section",ExpressionUUID->"482ac6d7-46e5-4247-9ccd-0ab16aeb8333"],
+Cell[26418, 785, 274, 7, 60, "Input",ExpressionUUID->"ed0ea58c-2be6-4739-a6da-d189252d622f"],
+Cell[CellGroupData[{
+Cell[26717, 796, 252, 5, 60, "Input",ExpressionUUID->"62c110f2-1783-49b4-b5d4-e1e8793d4c18"],
+Cell[26972, 803, 726, 21, 88, "Print",ExpressionUUID->"8cc8b7c6-54a9-4499-ba09-96289b920a75"]
+}, Open  ]],
+Cell[CellGroupData[{
+Cell[27735, 829, 295, 6, 60, "Input",ExpressionUUID->"261ffc3d-97db-4b47-9d47-db406c9f925f"],
+Cell[28033, 837, 637, 19, 76, "Print",ExpressionUUID->"419269a7-f2cc-401c-8898-1eea646cc195"]
+}, Open  ]],
+Cell[CellGroupData[{
+Cell[28707, 861, 312, 7, 60, "Input",ExpressionUUID->"1dbc8596-faa2-4da0-99d7-f99489ff1eed"],
+Cell[29022, 870, 596, 18, 90, "Print",ExpressionUUID->"a690f74b-e62a-4f88-9832-649345fc748c"]
+}, Open  ]],
+Cell[29633, 891, 337, 5, 70, "Text",ExpressionUUID->"1b17f61d-74dd-45af-8507-2ab7f4d19ba5"],
+Cell[29973, 898, 269, 6, 60, "Input",ExpressionUUID->"744f06a9-2511-45d8-9a16-6085f57c8ade"],
+Cell[CellGroupData[{
+Cell[30267, 908, 270, 5, 60, "Input",ExpressionUUID->"d6239d3d-0c94-45bb-9339-22bc8151ea01"],
+Cell[30540, 915, 434, 9, 46, "Print",ExpressionUUID->"a1d66c87-8575-4dec-bf30-fe11d364e843"]
+}, Open  ]],
+Cell[30989, 927, 402, 6, 70, "Text",ExpressionUUID->"1af65bbd-b469-4ad5-af75-50b67764f1d8"],
+Cell[CellGroupData[{
+Cell[31416, 937, 604, 16, 85, "Input",ExpressionUUID->"c7a08c63-5d77-4e29-ad86-46652c6234a6"],
+Cell[32023, 955, 19222, 405, 474, "Output",ExpressionUUID->"c3134ba6-3ba0-4a9d-9b24-e1bdf3b6485d"]
+}, Open  ]]
+}, Open  ]]
+}, Open  ]]
+}
+]
+*)
+
+(* End of internal cache information *)
+

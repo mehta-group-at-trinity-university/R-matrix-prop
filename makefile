@@ -33,8 +33,8 @@ AdiabaticPotential.o: AdiabaticPotential.f90 Interpolation.o
 RMATPROPAdiabatic.o: RMATPROPAdiabatic.f90 RMatPropCore.o AdiabaticPotential.o
 	${CMP} ${DEBUG} ${FORCEDP} ${CMPFLAGS} -c RMATPROPAdiabatic.f90
 
-matrix_stuff.o: matrix_stuff.f
-	${CMP} ${FORCEDP} ${CMPFLAGS} -c matrix_stuff.f
+matrix_stuff.o: $(LIB_DIR)/matrix_stuff.f90
+	${CMP} ${FORCEDP} ${CMPFLAGS} -c $(LIB_DIR)/matrix_stuff.f90
 
 Bsplines.o: $(LIB_DIR)/Bsplines.f90
 	${CMP} ${FORCEDP} -c $(LIB_DIR)/Bsplines.f90
