@@ -33,6 +33,16 @@ AdiabaticPotential.o: AdiabaticPotential.f90 Interpolation.o
 RMATPROPAdiabatic.o: RMATPROPAdiabatic.f90 RMatPropCore.o AdiabaticPotential.o
 	${CMP} ${DEBUG} ${FORCEDP} ${CMPFLAGS} -c RMATPROPAdiabatic.f90
 
+# Standalone diagnostic (see PlotWavefunction.f90 header) -- not part of `all`,
+# build/run separately with `make PlotWavefunction.x && ./PlotWavefunction.x`.
+PLOTWAVEFUNCTION_OBJS = besselnew.o Bsplines.o matrix_stuff.o RMatPropCore.o Quadrature.o Interpolation.o AdiabaticPotential.o PlotWavefunction.o
+
+PlotWavefunction.x: ${PLOTWAVEFUNCTION_OBJS}
+	${CMP} ${DEBUG} ${PLOTWAVEFUNCTION_OBJS} ${INCLUDE} ${ARPACK} ${LAPACK} ${CMPFLAGS} ${FORCEDP} -o PlotWavefunction.x
+
+PlotWavefunction.o: PlotWavefunction.f90 RMatPropCore.o AdiabaticPotential.o
+	${CMP} ${DEBUG} ${FORCEDP} ${CMPFLAGS} -c PlotWavefunction.f90
+
 matrix_stuff.o: $(LIB_DIR)/matrix_stuff.f90
 	${CMP} ${FORCEDP} ${CMPFLAGS} -c $(LIB_DIR)/matrix_stuff.f90
 
