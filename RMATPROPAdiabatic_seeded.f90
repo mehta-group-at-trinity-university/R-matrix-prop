@@ -1,26 +1,25 @@
 !****************************************************************************************************
-! R-matrix propagation driven by real adiabatic hyperspherical data (P/Q-tilde/U from
-! Adiabatic-Scattering-BoundStates' adiabatic solvers) instead of the synthetic Baluja
-! test potential in RMATPROP2016.f90. Reuses RMatPropCore.f90's CalcGamLam/
-! PartitionAndEliminate/BoxMatch/CalcK unchanged, and AdiabaticPotential.f90 for data
-! import + interpolation. Structurally mirrors RMATPROP2016.f90's Baluja-benchmark main
-! (box loop, PartitionAndEliminate, BoxMatch, final CalcK), but starts propagation at
-! xMin with a regularity condition (Boxes(1)%NumOpenL=0, no retained left DOF, no
-! literature-R-matrix seed needed) instead of a diagonalized literature-R-matrix seed --
-! this pattern (and the BPD1/Left=0-vs-BPD0/Left=2 basis split it requires) is carried
-! over from an earlier prototype, ~/Documents/GitHub/Adiabatic-R-Mat-Prop/RMATPROP2016.f90,
-! which validates the same regularity-start approach; unlike that prototype, Leff/
-! Threshold here come from FitLeff.data rather than lam=0, so CalcK's asymptotic Bessel
-! matching uses the correct generalized angular momentum.
+! DIAGNOSTIC VARIANT of RMATPROPAdiabatic.f90: box 1 (R in [0,xr1], the region where the
+! interpolated-tabulated-data pipeline was found to break down badly for the non-Coulomb
+! channels -- see AdiabaticPotential.f90's SetAdiabaticPotential and the surrounding
+! near-origin discussion) is NOT built from interpolated data at all here. Instead, its own
+! R-matrix (all NumChannels retained, at its own right edge) is read in from
+! 'Box1Rmatrix.dat' -- written by Adiabatic-Scattering-BoundStates/DeltaScat/DeltaScat.f90,
+! which evaluates the exact KMS closed-form potential at every quadrature point, no
+! interpolation, no near-origin domain limit -- one block per energy, diagonalized (DSYEV)
+! to reconstruct an equivalent Zf/bf eigenchannel representation, and used to seed
+! Boxes(1) directly. Boxes 2..NumBoxes (interior + last box) are built EXACTLY as in
+! RMATPROPAdiabatic.f90, unchanged -- interpolated data, same CalcGamLam/
+! PartitionAndEliminate/BoxMatch/CalcK pipeline. Requires NumBoxes>=2 (box 1 must be
+! distinct from the last box) and the exact same Emin/Emax/NumEnergies/EnergyGridType as
+! the DeltaScat run that produced Box1Rmatrix.dat (so energies line up block-for-block).
 !
-! Runs an ENERGY SCAN from Emin to Emax (NumEnergies points, linearly spaced), redoing the
-! full box/basis setup and propagation at each energy (the basis itself doesn't depend on
-! Energy, but redoing it is simple and correct, and the per-point cost is small). For any
-! energy where exactly one channel is open, computes the single-channel phase shift
-! delta=atan(K), unwrapped for continuity across the scan (branch chosen closest to the
-! previous written point; no absolute anchor/offset is imposed -- the physical bound-state-
-! count-based Levinson anchor, or any comparison-specific convention offset, is left to the
-! user/analysis step), and writes it to a plain-text, xmgrace-readable file.
+! Purpose: isolate whether the ~50x K-matrix discrepancy against DeltaScat found with the
+! ordinary interpolated pipeline is entirely a box-1/near-origin effect. If substituting
+! DeltaScat's exact box-1 R-matrix here reproduces DeltaScat's own K/delta closely, that
+! confirms (a) the near-origin interpolation breakdown IS the culprit, and (b) everything
+! downstream of box 1 (interior boxes, last box, CalcK) in RMATPROPAdiabatic's own pipeline
+! is correct.
 !****************************************************************************************************
 PROGRAM main
   USE DataStructures
@@ -33,7 +32,7 @@ PROGRAM main
   CHARACTER(LEN=64) DataDir
   CHARACTER(LEN=16) EnergyGridType
   INTEGER ios
-  TYPE(BPData) BPD,BPD0,BPD1
+  TYPE(BPData) BPD,BPD0
   TYPE(GenEigVal) EIG
   TYPE(BoxData) Bnull
   TYPE(BoxData), ALLOCATABLE :: Boxes(:)
@@ -43,12 +42,14 @@ PROGRAM main
   ! once, reused every energy via CombineGam). The last box is rebuilt fresh each energy,
   ! since its NumOpenR=NumOpenChannels can change with energy.
   DOUBLE PRECISION, ALLOCATABLE :: Gam0Boxes(:,:,:), OverlapBoxes(:,:,:), LamBoxes(:,:,:)
-  ! Cached energy-independent Gam0/Overlap/Lam for box 1 (only when NumBoxes>=2, i.e. box 1
-  ! is NOT simultaneously the last box -- see the caching block before the energy loop and
-  ! its use inside the loop for why NumBoxes==1 can't use this and must rebuild box 1 fresh
-  ! every energy instead).
-  DOUBLE PRECISION, ALLOCATABLE :: Gam0Box1(:,:), OverlapBox1(:,:), LamBox1(:,:)
   DOUBLE PRECISION, ALLOCATABLE :: evalRed(:), evecRed(:,:), LamooDiag(:)
+  ! Box 1 seed: read from Box1Rmatrix.dat (DeltaScat's exact box-1 R-matrix), one
+  ! NumChannels x NumChannels block per energy, diagonalized via DSYEV to reconstruct an
+  ! equivalent Zf/bf eigenchannel representation for Boxes(1).
+  INTEGER Box1RFile, jSeed, betaSeed, dsyevInfo, dsyevLwork
+  DOUBLE PRECISION seedEnergy, seedXr
+  DOUBLE PRECISION, ALLOCATABLE :: Rmat1(:,:), dsyevWork(:), Rmat1Eval(:)
+  CHARACTER(LEN=200) seedHeaderLine
   DOUBLE PRECISION, ALLOCATABLE :: Threshold(:), Leff(:), CoulombC(:)
   TYPE(InterpolatingFunction), ALLOCATABLE :: UInterp(:)
   TYPE(InterpolatingMatrix) :: PInterp, QInterp
@@ -174,34 +175,25 @@ PROGRAM main
   WRITE(RecombFile,'(A)') '@    xaxis label "Energy"'
   WRITE(RecombFile,'(A)') '@    yaxis label "1 - |S11|^2"'
 
+  Box1RFile = 53
+  OPEN(unit=Box1RFile,file='Box1Rmatrix.dat',status='old')
+  READ(Box1RFile,'(A)') seedHeaderLine
+  READ(Box1RFile,'(A)') seedHeaderLine
+  ALLOCATE(Rmat1(NumChannels,NumChannels),Rmat1Eval(NumChannels))
+  dsyevLwork = MAX(1,3*NumChannels-1)
+  ALLOCATE(dsyevWork(dsyevLwork))
+
   !---------------------------------------------------------------------
-  ! ONE-TIME setup (energy-independent): primitive basis BPD0 on [0,1],
-  ! BPD1's allocation (its geometry/basis is rebuilt fresh each energy inside
-  ! the loop -- see note there), and cached Gam0/Overlap/Lam for interior
-  ! boxes 2..NumBoxes-1, whose NumOpenL=NumOpenR=NumChannels never changes
-  ! with energy so their matrix elements never need to be recomputed after
-  ! this. Box 1 and the last box are handled fresh inside the energy loop.
+  ! ONE-TIME setup (energy-independent): primitive basis BPD0 on [0,1], and cached
+  ! Gam0/Overlap/Lam for interior boxes 2..NumBoxes-1, whose NumOpenL=NumOpenR=NumChannels
+  ! never changes with energy so their matrix elements never need to be recomputed after
+  ! this. Box 1 is read from Box1Rmatrix.dat fresh each energy (see the energy loop); the
+  ! last box is handled fresh inside the energy loop as usual.
   !---------------------------------------------------------------------
   ! Quadratic box-boundary spacing (not just quadratic grid WITHIN box 1): boundary(i) =
   ! xStart + (xEnd-xStart)*(i/NumBoxes)^2, clustering more/narrower boxes near xStart so
   ! resolution is concentrated where the delta-function channel's U/Q curves vary fastest.
   ! (BoxEdge(i), defined below at each use site, replaces the old uniform xStart+i*xDelt.)
-
-  BPD1%NumChannels = NumChannels
-  BPD1%Order = Order
-  ! Left=2 (both B1,B2 independently retained at xMin), NumOpenL still 0
-  ! (Boxes(1)%NumOpenL=0 below): the ordinary CalcGamLam/PartitionAndEliminate
-  ! elimination mechanism (already exercised for every other box's closed
-  ! channels) handles box 1's boundary directly, in place of the earlier
-  ! specialized BuildBox1CombinedBasis/CalcGamLamBox1 Robin-matched basis.
-  ! Confirmed equivalent to that older approach (and to a plain Neumann box-1
-  ! basis) once the near-origin potential/BC pipeline was fixed -- this is now
-  ! the permanent implementation, not a variant under test.
-  BPD1%Left = 2
-  BPD1%Right = 2
-  BPD1%xNumPoints = xNumPoints
-  BPD1%kl = 1d20
-  BPD1%kr = 1d20
 
   BPD0%NumChannels = NumChannels
   BPD0%Order = Order
@@ -244,30 +236,10 @@ PROGRAM main
      ENDDO
   ENDIF
 
-  !---------------------------------------------------------------------
-  ! Box 1's basis (geometry, MakeBasis, SetAdiabaticPotential, CalcGamLam) is
-  ! energy-independent -- same as the interior boxes above -- now that it uses the
-  ! ordinary Left=2/NumOpenL=0 elimination mechanism instead of the old energy-dependent
-  ! Robin-matched basis. The only exception is NumBoxes==1, where box 1 doubles as the
-  ! last box and its NumOpenR=NumOpenChannels genuinely changes with energy (see the
-  ! NumBoxes==1 branch inside the energy loop, which rebuilds box 1 fresh every energy
-  ! exactly as before).
-  !---------------------------------------------------------------------
-  IF (NumBoxes.GE.2) THEN
-     ALLOCATE(Gam0Box1(BPD%MatrixDim,BPD%MatrixDim))
-     ALLOCATE(OverlapBox1(BPD%MatrixDim,BPD%MatrixDim))
-     ALLOCATE(LamBox1(BPD%MatrixDim,BPD%MatrixDim))
-     CALL AllocateBPD(BPD1)
-     BPD1%xl = xStart
-     BPD1%xr = xStart + (xEnd-xStart)*(1d0/DBLE(NumBoxes))**BoxSpacingPower
-     CALL GridMaker(BPD1%xPoints,BPD1%xNumPoints,BPD1%xl,BPD1%xr,"quadratic")
-     CALL MakeBasis(BPD1)
-     BPD1%lam(1:NumChannels) = Leff(1:NumChannels)
-     CALL SetAdiabaticPotential(BPD1,muLocal,UInterp,PInterp,QInterp,CoulombC)
-     CALL CalcGamLam(BPD1,EIG,0,NumChannels)
-     Gam0Box1 = EIG%Gam0
-     OverlapBox1 = EIG%Overlap
-     LamBox1 = EIG%Lam
+  IF (NumBoxes.LT.2) THEN
+     WRITE(6,*) "RMATPROPAdiabatic_seeded: requires NumBoxes>=2 (box 1 must be distinct ", &
+          "from the last box) -- got NumBoxes=",NumBoxes
+     STOP
   ENDIF
 
   havePrevDelta = .FALSE.
@@ -331,44 +303,47 @@ PROGRAM main
      CALL AllocateScat(SD,NumChannels)
 
      !---------------------------------------------------------------------
-     ! Box 1: NumBoxes>=2 reuses the Gam0Box1/OverlapBox1/LamBox1 cached once before the
-     ! energy loop (BPD1 itself is also already allocated/built there and stays live for
-     ! the whole run) -- just the cheap CombineGam recombination plus the linear algebra
-     ! (PartitionAndEliminate/BoxMatch), exactly mirroring the interior-box pattern below.
-     ! NumBoxes==1 is the one case that can't be cached: box 1 doubles as the last box, so
-     ! its NumOpenR=NumOpenChannels genuinely changes with energy and it must be rebuilt
-     ! fully fresh every time (matching the last-box branch's own NumOpenR-changes-with-
-     ! energy reasoning).
+     ! Box 1: read DeltaScat's exact R-matrix for THIS energy from Box1Rmatrix.dat
+     ! (written block-by-block in the same energy order this scan uses), diagonalize it
+     ! (R = V*diag(Lambda)*V^T via DSYEV), and reconstruct an equivalent Zf/bf eigenchannel
+     ! representation: bf(beta)=1/Lambda(beta), Zf(i,beta)=V(i,beta), Zfp=-Zf*bf (BoxMatch's
+     ! own normalization convention -- see RMatPropCore.f90). This exactly reproduces
+     ! Rmat1(i,j)=sum_beta Zf(i,beta)*Zf(j,beta)/bf(beta), so Boxes(1) is a valid substitute
+     ! for whatever BoxMatch(Bnull,Boxes(1),...) would have produced, without ever touching
+     ! the interpolated near-origin potential.
      !---------------------------------------------------------------------
-     IF (NumBoxes.GE.2) THEN
-        EIG%Gam0 = Gam0Box1
-        EIG%Overlap = OverlapBox1
-        EIG%Lam = LamBox1
-        CALL CombineGam(EIG,Energy)
-        ALLOCATE(evalRed(Boxes(1)%betaMax),evecRed(Boxes(1)%betaMax,Boxes(1)%betaMax))
-        ALLOCATE(LamooDiag(Boxes(1)%betaMax))
-        CALL PartitionAndEliminate(BPD1,EIG,Boxes(1)%NumOpenL,Boxes(1)%NumOpenR,evalRed,evecRed,LamooDiag)
-        CALL BoxMatch(Bnull, Boxes(1), BPD1, evalRed, evecRed, LamooDiag, EffDim, AlphaFactor)
-        DEALLOCATE(evalRed,evecRed,LamooDiag)
-     ELSE
-        CALL AllocateBPD(BPD1)
-        BPD1%xl = Boxes(1)%xl
-        BPD1%xr = Boxes(1)%xr
-        CALL GridMaker(BPD1%xPoints,BPD1%xNumPoints,BPD1%xl,BPD1%xr,"quadratic")
-        CALL MakeBasis(BPD1)
-        BPD1%lam(1:NumChannels) = Leff(1:NumChannels)
-        CALL SetAdiabaticPotential(BPD1,muLocal,UInterp,PInterp,QInterp,CoulombC)
-        CALL CalcGamLam(BPD1,EIG,Boxes(1)%NumOpenL,Boxes(1)%NumOpenR)
-        CALL CombineGam(EIG,Energy)
-        ALLOCATE(evalRed(Boxes(1)%betaMax),evecRed(Boxes(1)%betaMax,Boxes(1)%betaMax))
-        ALLOCATE(LamooDiag(Boxes(1)%betaMax))
-        CALL PartitionAndEliminate(BPD1,EIG,Boxes(1)%NumOpenL,Boxes(1)%NumOpenR,evalRed,evecRed,LamooDiag)
-        CALL BoxMatch(Bnull, Boxes(1), BPD1, evalRed, evecRed, LamooDiag, EffDim, AlphaFactor)
-        DEALLOCATE(evalRed,evecRed,LamooDiag)
+     READ(Box1RFile,'(A)') seedHeaderLine
+     READ(seedHeaderLine(12:31),*) seedEnergy
+     READ(seedHeaderLine(39:58),*) seedXr
+     IF (DABS(seedEnergy-Energy).GT.1d-9*MAX(1d0,DABS(Energy))) THEN
+        WRITE(6,*) "RMATPROPAdiabatic_seeded: energy grid mismatch -- seed file has ", &
+             seedEnergy," this run wants ",Energy,". Was Box1Rmatrix.dat generated with ", &
+             "the same Emin/Emax/NumEnergies/EnergyGridType as RMATPROPAdiabatic.inp?"
+        STOP
      ENDIF
-     ! For NumBoxes==1, BPD1 stays allocated past here -- CalcK still needs BPD1%xr/%lam
-     ! below (see note there); deallocated after that call instead. For NumBoxes>=2, BPD1
-     ! is persistent (built once before the loop) and is NOT deallocated per-energy at all.
+     IF (DABS(seedXr-Boxes(1)%xr).GT.1d-9*MAX(1d0,DABS(Boxes(1)%xr))) THEN
+        WRITE(6,*) "RMATPROPAdiabatic_seeded: box-1 edge mismatch -- seed file xr=", &
+             seedXr," this run's Boxes(1)%xr=",Boxes(1)%xr,". Was Box1Rmatrix.dat generated ", &
+             "with the same NumBoxes/xStart/xEnd/BoxSpacingPower?"
+        STOP
+     ENDIF
+     DO i = 1,NumChannels
+        READ(Box1RFile,*) Rmat1(i,1:NumChannels)
+     ENDDO
+
+     CALL DSYEV('V','U',NumChannels,Rmat1,NumChannels,Rmat1Eval,dsyevWork,dsyevLwork,dsyevInfo)
+     IF (dsyevInfo.NE.0) THEN
+        WRITE(6,*) "RMATPROPAdiabatic_seeded: DSYEV failed, info=",dsyevInfo," at Energy=",Energy
+        STOP
+     ENDIF
+     ! Rmat1 now holds the eigenvectors V (DSYEV overwrites it in place); Rmat1Eval holds Lambda.
+     DO betaSeed = 1,NumChannels
+        Boxes(1)%bf(betaSeed) = 1d0/Rmat1Eval(betaSeed)
+        DO jSeed = 1,NumChannels
+           Boxes(1)%Zf(jSeed,betaSeed) = Rmat1(jSeed,betaSeed)
+           Boxes(1)%Zfp(jSeed,betaSeed) = -Boxes(1)%Zf(jSeed,betaSeed)*Boxes(1)%bf(betaSeed)
+        ENDDO
+     ENDDO
 
      !---------------------------------------------------------------------
      ! Interior boxes 2..NumBoxes-1: reuse the cached Gam0/Overlap/Lam built
@@ -376,13 +351,9 @@ PROGRAM main
      ! algebra (PartitionAndEliminate/BoxMatch), no re-integration.
      !---------------------------------------------------------------------
      DO iBox = 2,NumBoxes-1
-        ! BoxMatch uses BPD%xl/xr directly (R-power normalization) -- BPD itself is only
-        ! reused here for its energy-independent MatrixDim/Order/NumChannels structure
-        ! (PartitionAndEliminate doesn't touch %xl/%xr at all), but BoxMatch does, so these
-        ! must be refreshed to THIS box's own edges every iteration -- cheap (two scalar
-        ! assignments), fixes a bug where they were left stuck at whatever box the
-        ! one-time pre-loop cache-build above last visited (iBox=NumBoxes-1), so every
-        ! interior box's BoxMatch call was normalizing against the wrong box edges.
+        ! BoxMatch uses BPD%xl/xr directly (R-power normalization) -- refresh to this
+        ! box's own edges every iteration (see the matching fix/comment in
+        ! RMATPROPAdiabatic.f90; numerically inert for this dataset but fixes a real bug).
         BPD%xl = xStart + (xEnd-xStart)*(DBLE(iBox-1)/DBLE(NumBoxes))**BoxSpacingPower
         BPD%xr = xStart + (xEnd-xStart)*(DBLE(iBox)/DBLE(NumBoxes))**BoxSpacingPower
         EIG%Gam0 = Gam0Boxes(:,:,iBox)
@@ -420,19 +391,7 @@ PROGRAM main
         DEALLOCATE(evalRed,evecRed,LamooDiag)
      ENDIF
 
-     ! NumBoxes=1: there is no separate "last box" (box 1 itself is the only box),
-     ! so BPD%xr is never set to the physical box edge -- Box 1's R-matrix was actually
-     ! produced using BPD1 (regularity basis), so CalcK must be matched using BPD1's own
-     ! xr, not BPD's (which would silently be 0, from BPD0's own [0,1] construction,
-     ! feeding hyperrjry an x=k*0=0 argument and crashing bessjy).
-     IF (NumBoxes.EQ.1) THEN
-        CALL CalcK(Boxes(NumBoxes),BPD1,SD,reducedmass,EffDim,AlphaFactor,Energy,Threshold)
-        CALL DeAllocateBPD(BPD1)  ! rebuilt fresh every energy in this branch -- see above
-     ELSE
-        CALL CalcK(Boxes(NumBoxes),BPD,SD,reducedmass,EffDim,AlphaFactor,Energy,Threshold)
-        ! BPD1 is persistent here (built once before the loop) -- torn down once after the
-        ! loop instead, alongside BPD0/EIG/Gam0Boxes.
-     ENDIF
+     CALL CalcK(Boxes(NumBoxes),BPD,SD,reducedmass,EffDim,AlphaFactor,Energy,Threshold)
 
      !---------------------------------------------------------------------
      ! Diagnostic: full K-matrix dump for the all-channels-open diagonal-
@@ -504,8 +463,7 @@ PROGRAM main
      ! fresh next iteration -- Boxes, Bnull, SD -- must be freed here).
      ! BPD0/BPD/EIG/xprim/Gam0Boxes/OverlapBoxes/LamBoxes now live for the
      ! whole run (built once before the energy loop) and are torn down once
-     ! after it below; BPD1 is already deallocated above (rebuilt every
-     ! energy, per the box-1 comment there).
+     ! after it below.
      !---------------------------------------------------------------------
      DO i = 1,NumBoxes
         CALL DeAllocateBox(Boxes(i))
@@ -516,10 +474,6 @@ PROGRAM main
   ENDDO
 
   CALL DeAllocateBPD(BPD0)
-  IF (NumBoxes.GE.2) THEN
-     CALL DeAllocateBPD(BPD1)
-     DEALLOCATE(Gam0Box1,OverlapBox1,LamBox1)
-  ENDIF
   DEALLOCATE(xprim)
   CALL DeAllocateEIG(EIG)
   IF (ALLOCATED(Gam0Boxes)) DEALLOCATE(Gam0Boxes,OverlapBoxes,LamBoxes)
@@ -527,6 +481,7 @@ PROGRAM main
   CLOSE(PhaseFile)
   CLOSE(KMatFile)
   CLOSE(RecombFile)
+  CLOSE(Box1RFile)
   WRITE(6,*)
   WRITE(6,*) "Phase shift written to PhaseShift.dat (xmgrace: xmgrace PhaseShift.dat)"
 

@@ -25,15 +25,13 @@ CONTAINS
     TYPE(InterpolatingFunction), ALLOCATABLE, INTENT(out) :: UInterp(:)
     TYPE(InterpolatingMatrix), INTENT(out) :: PInterp, QInterp
 
-    INTEGER, PARAMETER :: SplineOrder = 4   ! cubic B-spline, matching CABA's Akima cubic
-                                             ! interpolation -- testing whether the residual
-                                             ! ~2-5x gap against CABA traces to interpolation
-                                             ! order. (Was 2/piecewise-linear, matching the
-                                             ! precedent set in Adiabatic-R-Mat-Prop's
-                                             ! SetReadPotential, chosen there to stay well-behaved
-                                             ! through Q-tilde's sharp features near
-                                             ! adiabatic-curve avoided crossings -- revisit if
-                                             ! cubic proves unstable there.)
+    INTEGER, PARAMETER :: SplineOrder = 2   ! piecewise-linear B-spline (order=2), chosen to
+                                             ! validate this repo's R-matrix propagation fork
+                                             ! against the DeltaScat no-interpolation benchmark
+                                             ! (Adiabatic-Scattering-BoundStates/DeltaScat) while
+                                             ! avoiding cubic-spline ringing near the origin.
+                                             ! Was 4 (cubic, matching CABA's Akima interpolation)
+                                             ! -- revisit/compare once linear is validated.
     INTEGER NumChannelsUad, NumDataPointsUad, i, j, n, hashpos, NPts
     DOUBLE PRECISION dum
     DOUBLE PRECISION, ALLOCATABLE :: Rdata(:), Udata(:,:)
@@ -116,7 +114,16 @@ CONTAINS
     CALL SetupInterpolatingMatrix(PInterp)
     CALL SetupInterpolatingMatrix(QInterp)
 
-    !--- FitLeff.data: 2 header lines + blank, then j, Threshold(j), <resid>, Leff(j), FitRangeMin(j) ---
+    !--- FitLeff.data: 2 header lines + blank, then j, Threshold(j), residual(unused),
+    !    Leff(j), FitRangeMin(j). The "residual" column (always 0 -- NewFitProg.f computes
+    !    it against an array that's never assigned before that point) is still present in
+    !    every FitLeff.data this repo currently has, despite the stale comment this replaces
+    !    claiming it was "removed at the source" -- it wasn't. Skipping straight to Leff(n)
+    !    (3 variables for a 5-column line) silently read the residual placeholder (always 0)
+    !    as Leff for every channel instead, corrupting CalcK's outer Bessel-matching order
+    !    for the whole run. Confirmed via the delta-function 5-channel dataset (this bug
+    !    alone explains the full K-matrix discrepancy previously misattributed to
+    !    interpolation/near-origin/ill-conditioning effects). ---
     ALLOCATE(Threshold(NumChannels),Leff(NumChannels))
     OPEN(unit=26,file=trim(DataDir)//'/FitLeff.data',status='old')
     READ(26,*)
@@ -192,14 +199,19 @@ CONTAINS
           DO mch = 1,BPD%NumChannels
              IF (CoulombC(mch).NE.0d0 .AND. R.LT.RcutoffAnalytic) THEN
                 BPD%Pot(mch,mch,lx,kx) = AnalyticComboNearOrigin(R,muLocal,CoulombC(mch))/(2d0*muLocal)
-             ELSE IF (R.GE.RcutoffAnalytic) THEN
+             ELSE
+                ! Ordinary (non-Coulomb) channel: no near-origin singularity, so its
+                ! interpolant is safe to evaluate anywhere in its tabulated domain
+                ! (starts at Rdata(2)~5e-5, well below RcutoffAnalytic=0.01) -- fixes a
+                ! bug where this branch used to require R>=RcutoffAnalytic and silently
+                ! left BPD%Pot(mch,mch) at 0 otherwise. That zeroed out a real, large
+                ! centrifugal-type U(mch) for R<0.01 (confirmed via the delta-function
+                ! 5-channel dataset: U(2) ~ 1.9e6 at R=0.004, dropped entirely), which
+                ! corrupts box 1's log-derivative and propagates through the whole
+                ! outward R-matrix chain -- this DOES occur (box 1 routinely spans past
+                ! R=0.01 for channels 2+), contrary to the comment this replaces.
                 BPD%Pot(mch,mch,lx,kx) = BPD%Pot(mch,mch,lx,kx) + Interpolated(R,UInterp(mch))
              ENDIF
-             ! else: ordinary (non-Coulomb) channel with R below RcutoffAnalytic --
-             ! doesn't occur for any channel this repo currently tests (only the
-             ! genuine two-body bound-pair channel's box ever reaches R this small);
-             ! BPD%Pot(mch,mch) is left at 0 rather than risk the dbsval domain-edge
-             ! bug by calling Interpolated(R,UInterp(mch)) there.
           ENDDO
        ENDDO
     ENDDO

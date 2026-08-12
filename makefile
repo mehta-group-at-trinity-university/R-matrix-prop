@@ -9,6 +9,7 @@ INTERP_DIR = $(HOME)/Documents/GitHub/interpolation
 LIB_DIR = $(HOME)/Documents/GitHub/lib
 OBJS  = besselnew.o Bsplines.o matrix_stuff.o RMatPropCore.o RMATPROP2016.o Quadrature.o Interpolation.o
 ADIABATIC_OBJS = besselnew.o Bsplines.o matrix_stuff.o RMatPropCore.o Quadrature.o Interpolation.o AdiabaticPotential.o RMATPROPAdiabatic.o
+ADIABATIC_SEEDED_OBJS = besselnew.o Bsplines.o matrix_stuff.o RMatPropCore.o Quadrature.o Interpolation.o AdiabaticPotential.o RMATPROPAdiabatic_seeded.o
 
 all: RMATPROP2016.x RMATPROPAdiabatic.x
 
@@ -17,6 +18,15 @@ RMATPROP2016.x:	   ${OBJS}
 
 RMATPROPAdiabatic.x: ${ADIABATIC_OBJS}
 	${CMP} ${DEBUG} ${ADIABATIC_OBJS} ${INCLUDE} ${ARPACK} ${LAPACK} ${CMPFLAGS} ${FORCEDP} -o RMATPROPAdiabatic.x
+
+# Diagnostic: box 1 seeded from DeltaScat's exact R-matrix (Box1Rmatrix.dat) instead of the
+# interpolated pipeline -- see RMATPROPAdiabatic_seeded.f90's own header. Not part of `all`;
+# build/run separately with `make RMATPROPAdiabatic_seeded.x && ./RMATPROPAdiabatic_seeded.x`.
+RMATPROPAdiabatic_seeded.x: ${ADIABATIC_SEEDED_OBJS}
+	${CMP} ${DEBUG} ${ADIABATIC_SEEDED_OBJS} ${INCLUDE} ${ARPACK} ${LAPACK} ${CMPFLAGS} ${FORCEDP} -o RMATPROPAdiabatic_seeded.x
+
+RMATPROPAdiabatic_seeded.o: RMATPROPAdiabatic_seeded.f90 RMatPropCore.o AdiabaticPotential.o
+	${CMP} ${DEBUG} ${FORCEDP} ${CMPFLAGS} -c RMATPROPAdiabatic_seeded.f90
 
 RMatPropCore.o: RMatPropCore.f90 Quadrature.o Interpolation.o
 	${CMP} ${DEBUG} ${FORCEDP} ${CMPFLAGS} -c RMatPropCore.f90
