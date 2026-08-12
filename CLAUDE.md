@@ -86,6 +86,8 @@ built differs between drivers. Key pieces, roughly in the order a driver calls t
 | `RMATPROP2016.x` | `BalujaParameters` module — synthetic multipole-coupling test potential | Reproduces the Baluja et al. CPC (1982) benchmark; uses `RMATPROP.inp`-style input (`NumParticles`/`NumChannels`/masses/... — format documented in the `.inp` file's own trailer comment), read via `RMatPropCore`'s `ReadGlobal`, not the `DataDir`-based format below. |
 | `RMATPROPAdiabatic.x` | `AdiabaticPotential.f90`, reading tabulated `Uad.dat`/`Pmat.dat`/`Qmat.dat` from a `DataDir` (see below) | Real adiabatic hyperspherical data in place of the synthetic Baluja potential; energy-scan driver (Emin/Emax/NumEnergies, linear or quadratic spacing) validated against Amaya-Tapia, Larsen & Popiel, Few-Body Systems 23, 87-109 (1997). |
 | `RMATPROPHybridSVD.x` | Box 1..`NumSVDBoxes`: SVD/DVR boxes via `SVDChannelBasis.f90` (interfacing `adiabaticSolver1D.f90`'s `OneDimChannels`); remaining boxes: same B-spline basis as `RMATPROPAdiabatic.x` | `Rswitch` between the two basis types falls out of the uniform box-edge spacing formula. |
+| `RMATPROPHybridSVDAnalytic.x` | Every box SVD, built by `AnalyticSVDChannelBasis.f90`'s `BuildSVDBoxAnalytic` — per-R channel data (`Uad`, cross-R overlap) from `KMSFormulas.f`'s closed-form `SolveQ`/`EvalU`/`EvalOverlapAt` | Zero-basis-error benchmark driver for the equal-mass three-boson delta-function problem (Mehta, Esry & Greene, PRA 76, 022711 (2007)); physics hardcoded, no `Fit.data`/`FitLeff.data`. Not part of `all`. |
+| `RMATPROPHybridSVDRobin.x` | Every box SVD, built by `RobinSVDChannelBasis.f90`'s `BuildSVDBoxRobin` — per-R channel data from a genuine numerical diagonalization (`CalcBasisFuncsBP`'s Robin/`Left=1,Right=3` BC, fed the exact delta-function log-derivative `sqrt(2*mu)*R` at `phi=pi/6`) | Same benchmark as above but exercising the SVD machinery's generic (non-closed-form) numerical path. See "Delta-function SVD-box benchmark" below — two real bugs were found and fixed building this. Not part of `all`. |
 | `SVDBound.x` | Single Gauss-Lobatto DVR grid, Dirichlet-Dirichlet | Bound-state solver — one direct diagonalization, no R-matrix box-chaining at all. |
 | `SVDRmat.x` | Same T+V construction as `SVDBound.x` | Wigner-Eisenbud-form single-box R-matrix: one energy-independent diagonalization, then `R(E)` from the pole sum — deliberately *not* the log-derivative/`PartitionAndEliminate`/`BoxMatch` eigenchannel approach used elsewhere in this repo. |
 | `BSplineFree.x` | Single free-particle (`V=0`) box, 2019-era box-1 recipe | Sanity check against the exact free-particle solution; explicitly avoids the newer `BuildBox1CombinedBasis`/`CalcGamLamBox1` machinery. |
@@ -126,6 +128,25 @@ externally by `Adiabatic-Scattering-BoundStates`'s adiabatic solvers:
   own `Bsplines.o`/`matrix_stuff.o`/`Quadrature.o`, not `Adiabatic-Scattering-BoundStates`'s
   local copies, to avoid linking two competing copies of the same routines into one executable —
   preserve this if editing the makefile.
+- **`DSYGV`'s per-R eigenvector sign is arbitrary** and must be pinned to a channel-appropriate,
+  never-vanishing reference point before using it in any cross-R overlap (`RobinSVDChannelBasis.f90`).
+  Left uncorrected, adjacent DVR nodes can pick up an independent sign flip, corrupting the
+  cross-R channel overlap with a magnitude-correct-but-wrong-sign entry. Pin via `Phi(0)` for
+  `cos(kappa*phi)`-branch channels (never zero there) but via `Phi(pi/6)` for the `cosh(q*phi)`
+  channel specifically — `Phi(0)` for that branch is exponentially suppressed relative to
+  `Phi(pi/6)` at large `kr` and decays into roundoff noise (confirmed: `evecPhi(1,1)~3e-5` vs
+  `~2` for other channels by `R~65`), reintroducing the same sign-ambiguity failure if used as
+  the reference there. See `RobinSVDChannelBasis.f90`'s own comment at the sign-fix for the full
+  derivation of why a single reference point doesn't work for every channel.
+- **A fixed angular B-spline resolution (`OrderPhi`/`xNumPointsPhi`) does not stay adequate as R
+  grows** in `RobinSVDChannelBasis.f90` — the Robin condition's `kr=sqrt(2*mu)*R` makes the
+  channel-1 (`cosh`) eigenfunction increasingly steep near `phi=pi/6` as R increases, and a
+  resolution adequate at small R can leave `RMATPROPHybridSVDRobin.x`'s phase shift off by up to
+  ~0.2 rad at low q even though the per-box `Gam0`/`Overlap`/`Lam`/cross-R-overlap all look
+  correct in isolation (low-q/near-threshold states have long healing lengths and are
+  disproportionately sensitive to this large-R truncation). `xNumPointsPhi=12` was not enough
+  for the `xEnd=100`, `NumBoxes=20` benchmark config; `xNumPointsPhi=20` brought the discrepancy
+  down to the same ~0.008 rad floor set by ordinary 5-channel truncation (see validation below).
 
 ## Validation
 
@@ -134,3 +155,23 @@ multichannel test case (`RMATPROP2016.x`), the Amaya-Tapia/Larsen/Popiel delta-f
 three-body phase shifts (`RMATPROPAdiabatic.x` + `3bodydata_delta_5ch`), and exact free-particle
 solutions (`BSplineFree.x`, `PlotWavefunctionFree.x`). `verify_AT_MS_tandelta.nb` is a
 Mathematica notebook doing this comparison against literature phase shifts.
+
+### Delta-function SVD-box benchmark (`RMATPROPHybridSVDAnalytic.x` / `RMATPROPHybridSVDRobin.x`)
+
+Both drivers solve the equal-mass three-boson delta-function problem end-to-end using an
+all-SVD box chain (no B-spline tail, no `Fit.data`/`FitLeff.data`), compared against
+`Adiabatic-Scattering-BoundStates/DeltaScat`'s independent no-interpolation benchmark and the
+exact closed-form Mehta-Shepard atom-dimer K-matrix. Compare branch-continued phase shift `delta`
+(`atan(K)`, unwrapped), not raw `K` — `K=tan(delta)` has a mathematical pole wherever `delta`
+crosses an odd multiple of `pi/2`, which can dominate a raw-`K` diff with an artifact even where
+`delta` itself agrees closely.
+
+- **Analytic** (`NumBoxes=20, xStart=0, xEnd=100, LSVD=24`, `Emin/Emax/NumEnergies =
+  -0.9999999635/-0.02/150` quadratic): matches `DeltaScat` to `max|delta-delta_DeltaScat|=9e-4`
+  rad, both matching exact to `~0.008` rad (ordinary 5-channel truncation, not a numerical
+  artifact — see `Adiabatic-Scattering-BoundStates/CLAUDE.md`'s own note on this).
+- **Robin** (same box grid, `OrderPhi=6, xNumPointsPhi=20`): matches exact to the same `~0.008`
+  rad floor once `xNumPointsPhi` is large enough (see the angular-resolution gotcha above) —
+  confirming the SVD box-chaining/`BoxMatch`/`CalcK` machinery is correct via a fully
+  independent, non-closed-form code path (genuine per-R diagonalization instead of
+  `KMSFormulas.f`'s analytic shortcut).
