@@ -135,5 +135,13 @@ RMATPROPHybridSVDRobin.x: ${HYBRIDSVDROBIN_OBJS}
 RMATPROPHybridSVDRobin.o: RMATPROPHybridSVDRobin.f90 RMatPropCore.o SVDChannelBasis.o RobinSVDChannelBasis.o
 	${CMP} ${DEBUG} ${FORCEDP} ${CMPFLAGS} -c RMATPROPHybridSVDRobin.f90
 
+# Canonical shared home is $(LIB_DIR)/AdiabaticInterfaces.f90 -- promoted there from this repo
+# once VeffAtomIon1D became a second real consumer; see AdiabaticInterfaces.f90's own header.
+AdiabaticInterfaces.o: $(LIB_DIR)/AdiabaticInterfaces.f90
+	${CMP} ${FORCEDP} ${CMPFLAGS} -c $(LIB_DIR)/AdiabaticInterfaces.f90
+
+AdiabaticSolverGeneric.o: $(LIB_DIR)/AdiabaticSolverGeneric.f90 AdiabaticInterfaces.o
+	${CMP} ${FORCEDP} ${CMPFLAGS} -c $(LIB_DIR)/AdiabaticSolverGeneric.f90
+
 clean:
 	rm -f *.mod *.o *.x
