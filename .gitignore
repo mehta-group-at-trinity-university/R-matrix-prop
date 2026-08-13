@@ -1,0 +1,6 @@
+# Build artifacts (see CLAUDE.md: "build artifacts (*.o/*.mod/*.x) ... routinely
+# show up as untracked/modified in git status and are not meaningful diffs on
+# their own" -- tracking them was a pre-existing mistake this formalizes fixing).
+*.o
+*.mod
+*.x
