@@ -1,0 +1,12 @@
+DataDir
+3bodydata_sech2_3boson_ch1
+
+Order  xNumPoints  LegPoints
+5      10          10
+
+NumBoxes  xMin  xMax
+100       0.0d0 40.0d0
+
+Emin  Emax  NumEnergies
+-0.999d0 1.0d0 200
+linear

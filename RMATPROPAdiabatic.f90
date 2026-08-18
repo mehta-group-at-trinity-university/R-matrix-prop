@@ -33,6 +33,15 @@ PROGRAM main
   CHARACTER(LEN=64) DataDir
   CHARACTER(LEN=16) EnergyGridType
   INTEGER ios
+  ! Gates the equal-mass delta-function-specific CoulombC/gamma0 near-origin correction
+  ! below (see that block's own header comment for the full "NOT GENERAL" rationale) --
+  ! defaults to .FALSE. (optional trailing .inp line, absent = off) so any dataset whose
+  ! Threshold(i)<0 does NOT mean "genuine Coulomb-diverging bound-pair channel" (e.g. a
+  ! short-range sech^2-well bound-dimer channel, where the near-origin U+Q/2mu behavior
+  ! is regular, not -C/R) doesn't silently get the wrong near-origin physics. Only
+  ! RMATPROPAdiabatic.inp (3bodydata_delta_5ch) sets this .TRUE., to keep that validated
+  ! benchmark unchanged.
+  LOGICAL ApplyCoulombC
   TYPE(BPData) BPD,BPD0,BPD1
   TYPE(GenEigVal) EIG
   TYPE(BoxData) Bnull
@@ -90,6 +99,8 @@ PROGRAM main
   READ(7,*) Emin, Emax, NumEnergies
   READ(7,*,IOSTAT=ios) EnergyGridType
   IF (ios.NE.0) EnergyGridType = "linear"
+  READ(7,*,IOSTAT=ios) ApplyCoulombC
+  IF (ios.NE.0) ApplyCoulombC = .FALSE.
   CLOSE(7)
 
   Pi = dacos(-1d0)
@@ -101,7 +112,24 @@ PROGRAM main
   CALL ReadAdiabaticData(DataDir,NumChannels,NumDataPoints,muLocal,alpha,ddim, &
        Threshold,Leff,UInterp,PInterp,QInterp)
   reducedmass = muLocal
-  AlphaFactor = alpha
+  ! AlphaFactor is forced to 0 rather than taking the dataset's own alpha (from Fit.data,
+  ! typically (EffDim-1)/2=0.5 for EffDim=2): the wavefunction-reduction term this produces,
+  ! AlphaFactor*(AlphaFactor-EffDim+2)/(2mu R^2), sits exactly at the critical/marginal
+  ! inverse-square coupling (T=1/4, Frobenius index nu=0) and is mishandled somewhere
+  ! downstream of provably-exact matrix elements (see memory wavefn-reduction-term-bug --
+  ! root cause still open, localized to PartitionAndEliminate/BoxMatch). AlphaFactor=0 makes
+  ! the term vanish identically regardless of EffDim and was validated to ~1e-7 relative
+  ! against independent NDSolve, both single-box (TestAlphaZero.f90) and through this
+  ! driver's full box-chained pipeline. Every dataset in this repo either already has
+  ! alpha=0 in Fit.data (3bodydata_delta_5ch -- never exposed to the bug, which is why it
+  ! validates against Amaya-Tapia without needing this override) or alpha=(EffDim-1)/2 at
+  ! the exact critical coefficient (every other dataset) -- there is currently no dataset
+  ! for which alpha=(EffDim-1)/2 is the correct choice, so this is unconditional, not a flag.
+  IF (alpha.NE.0d0) THEN
+     WRITE(6,*) "NOTE: overriding dataset's own alpha=",alpha," with AlphaFactor=0 -- see", &
+          " this line's own comment / memory wavefn-reduction-term-bug."
+  ENDIF
+  AlphaFactor = 0d0
   EffDim = ddim
 
   ! Bound-pair (two-body-threshold) channels have a genuine Coulomb-like -C/R
@@ -111,34 +139,37 @@ PROGRAM main
   ! Threshold here is still the RAW (not yet 2*mu-rescaled) two-body binding
   ! energy B2=-Threshold(i); a = 1/sqrt(2*mu2*B2), mu2=0.5 for two unit masses.
   !
-  ! *** NOT GENERAL -- delta-function/equal-mass-specific, needs revisiting for any
-  ! other problem: *** this block silently ASSUMES any channel with Threshold<0 is
-  ! this specific kind of genuine Coulomb-diverging bound-pair channel, and applies
-  ! the equal-mass gamma0 formula above unconditionally. A different potential (or
-  ! unequal masses) with a genuine negative-threshold channel that does NOT have
-  ! this particular near-origin -C/R form would get the WRONG CoulombC here, which
-  ! then silently substitutes the wrong near-origin physics via
-  ! AnalyticComboNearOrigin (RMatPropCore.f90) inside SetAdiabaticPotential's
-  ! R<RcutoffAnalytic override (AdiabaticPotential.f90). If porting to a new
-  ! problem: either zero out CoulombC for channels that don't have this exact
-  ! divergence, or replace this whole formula with whatever near-origin physics
-  ! actually applies there. Left as-is here to preserve this file's validated
-  ! delta-function benchmark unchanged (see RMATPROPAdiabatic.inp, DataDir=
-  ! 3bodydata_delta_5ch) -- confirmed to reproduce Amaya-Tapia, Larsen & Popiel
-  ! (Few-Body Systems 23, 87-109, 1997)'s own coupled-channel phase-shift figure.
+  ! *** NOT GENERAL -- delta-function/equal-mass-specific. *** Naively keying this off
+  ! Threshold<0 would silently ASSUME any negative-threshold channel is this specific
+  ! kind of genuine Coulomb-diverging bound-pair channel, and apply the equal-mass
+  ! gamma0 formula above unconditionally -- WRONG for a different potential (or unequal
+  ! masses) whose negative-threshold channel does NOT have this particular near-origin
+  ! -C/R form (e.g. a short-range sech^2-well bound-dimer channel: Threshold<0 there too,
+  ! but U+Q/2mu is regular at the origin, not -C/R divergent). This block would then
+  ! silently substitute the wrong near-origin physics via AnalyticComboNearOrigin
+  ! (RMatPropCore.f90) inside SetAdiabaticPotential's R<RcutoffAnalytic override
+  ! (AdiabaticPotential.f90). Gated behind ApplyCoulombC (read from the .inp file,
+  ! defaults to .FALSE.) instead of inferring it from Threshold's sign -- only
+  ! RMATPROPAdiabatic.inp (DataDir=3bodydata_delta_5ch) sets it .TRUE., to preserve this
+  ! file's validated delta-function benchmark unchanged -- confirmed to reproduce
+  ! Amaya-Tapia, Larsen & Popiel (Few-Body Systems 23, 87-109, 1997)'s own coupled-channel
+  ! phase-shift figure. New datasets with a genuine negative-threshold channel that ISN'T
+  ! this exact divergence (e.g. 3bodydata_sech2_5ch) simply leave ApplyCoulombC unset.
   ALLOCATE(CoulombC(NumChannels))
   CoulombC = 0d0
-  DO i = 1,NumChannels
-     IF (Threshold(i).LT.0d0) THEN
-        BLOCK
-          DOUBLE PRECISION gamma0, B2, a2
-          gamma0 = -12d0/(3d0**0.25d0*DSQRT(2d0)*Pi)
-          B2 = -Threshold(i)
-          a2 = 1d0/DSQRT(2d0*0.5d0*B2)
-          CoulombC(i) = -gamma0/(2d0*reducedmass*a2)
-        END BLOCK
-     ENDIF
-  ENDDO
+  IF (ApplyCoulombC) THEN
+     DO i = 1,NumChannels
+        IF (Threshold(i).LT.0d0) THEN
+           BLOCK
+             DOUBLE PRECISION gamma0, B2, a2
+             gamma0 = -12d0/(3d0**0.25d0*DSQRT(2d0)*Pi)
+             B2 = -Threshold(i)
+             a2 = 1d0/DSQRT(2d0*0.5d0*B2)
+             CoulombC(i) = -gamma0/(2d0*reducedmass*a2)
+           END BLOCK
+        ENDIF
+     ENDDO
+  ENDIF
 
   ! ReadAdiabaticData/FitLeff.data give raw threshold energies (matching Uad.dat's raw
   ! U(R) convention). CalcK's k(i)^2=2*mu*EE-Eth(i) formula (RMatPropCore.f90:493-494)
@@ -173,6 +204,7 @@ PROGRAM main
   WRITE(RecombFile,'(A)') '# Energy  NumOpenChannels  1-|S(1,1)|^2  (McGuire exact-unitarity test: should -> 0)'
   WRITE(RecombFile,'(A)') '@    xaxis label "Energy"'
   WRITE(RecombFile,'(A)') '@    yaxis label "1 - |S11|^2"'
+
 
   !---------------------------------------------------------------------
   ! ONE-TIME setup (energy-independent): primitive basis BPD0 on [0,1],
