@@ -55,6 +55,82 @@ PlotWavefunction.x: ${PLOTWAVEFUNCTION_OBJS}
 PlotWavefunction.o: PlotWavefunction.f90 RMatPropCore.o AdiabaticPotential.o
 	${CMP} ${DEBUG} ${FORCEDP} ${CMPFLAGS} -c PlotWavefunction.f90
 
+# Standalone diagnostic (see PlotWavefunctionCh1Robin.f90 header) -- Left=3/Robin box 1 with
+# kLeft fixed to the true near-origin log-derivative, single-channel 3boson dataset.
+PLOTWAVEFUNCTIONCH1ROBIN_OBJS = besselnew.o Bsplines.o matrix_stuff.o RMatPropCore.o Quadrature.o Interpolation.o AdiabaticPotential.o PlotWavefunctionCh1Robin.o
+
+PlotWavefunctionCh1Robin.x: ${PLOTWAVEFUNCTIONCH1ROBIN_OBJS}
+	${CMP} ${DEBUG} ${PLOTWAVEFUNCTIONCH1ROBIN_OBJS} ${INCLUDE} ${ARPACK} ${LAPACK} ${CMPFLAGS} ${FORCEDP} -o PlotWavefunctionCh1Robin.x
+
+PlotWavefunctionCh1Robin.o: PlotWavefunctionCh1Robin.f90 RMatPropCore.o AdiabaticPotential.o
+	${CMP} ${DEBUG} ${FORCEDP} ${CMPFLAGS} -c PlotWavefunctionCh1Robin.f90
+
+TESTFREEPARTICLE_OBJS = besselnew.o Bsplines.o matrix_stuff.o RMatPropCore.o Quadrature.o Interpolation.o AdiabaticPotential.o TestFreeParticle.o
+
+TestFreeParticle.x: ${TESTFREEPARTICLE_OBJS}
+	${CMP} ${DEBUG} ${TESTFREEPARTICLE_OBJS} ${INCLUDE} ${ARPACK} ${LAPACK} ${CMPFLAGS} ${FORCEDP} -o TestFreeParticle.x
+
+TestFreeParticle.o: TestFreeParticle.f90 RMatPropCore.o AdiabaticPotential.o
+	${CMP} ${DEBUG} ${FORCEDP} ${CMPFLAGS} -c TestFreeParticle.f90
+
+TESTALPHAZERO_OBJS = besselnew.o Bsplines.o matrix_stuff.o RMatPropCore.o Quadrature.o Interpolation.o AdiabaticPotential.o TestAlphaZero.o
+
+TestAlphaZero.x: ${TESTALPHAZERO_OBJS}
+	${CMP} ${DEBUG} ${TESTALPHAZERO_OBJS} ${INCLUDE} ${ARPACK} ${LAPACK} ${CMPFLAGS} ${FORCEDP} -o TestAlphaZero.x
+
+TestAlphaZero.o: TestAlphaZero.f90 RMatPropCore.o AdiabaticPotential.o
+	${CMP} ${DEBUG} ${FORCEDP} ${CMPFLAGS} -c TestAlphaZero.f90
+
+# Free-particle variant (see PlotWavefunctionFree.f90 header) -- same pattern as
+# PlotWavefunction.x, targets 3bodydata_free_5ch instead of 3bodydata_delta_5ch.
+PLOTWAVEFUNCTIONFREE_OBJS = besselnew.o Bsplines.o matrix_stuff.o RMatPropCore.o Quadrature.o Interpolation.o AdiabaticPotential.o PlotWavefunctionFree.o
+
+PlotWavefunctionFree.x: ${PLOTWAVEFUNCTIONFREE_OBJS}
+	${CMP} ${DEBUG} ${PLOTWAVEFUNCTIONFREE_OBJS} ${INCLUDE} ${ARPACK} ${LAPACK} ${CMPFLAGS} ${FORCEDP} -o PlotWavefunctionFree.x
+
+PlotWavefunctionFree.o: PlotWavefunctionFree.f90 RMatPropCore.o AdiabaticPotential.o
+	${CMP} ${DEBUG} ${FORCEDP} ${CMPFLAGS} -c PlotWavefunctionFree.f90
+
+# SVD analog (see PlotWavefunctionSVD.f90 header) -- single-box SVD wavefunction
+# reconstruction, overlaid against PlotWavefunctionFree.x's B-spline result.
+PLOTWAVEFUNCTIONSVD_OBJS = besselnew.o Bsplines.o matrix_stuff.o Quadrature.o Interpolation.o Potential.o adiabaticSolver1D.o RMatPropCore.o AdiabaticPotential.o SVDChannelBasis.o PlotWavefunctionSVD.o
+
+PlotWavefunctionSVD.x: ${PLOTWAVEFUNCTIONSVD_OBJS}
+	${CMP} ${DEBUG} ${PLOTWAVEFUNCTIONSVD_OBJS} ${INCLUDE} ${ARPACK} ${LAPACK} ${CMPFLAGS} ${FORCEDP} -o PlotWavefunctionSVD.x
+
+PlotWavefunctionSVD.o: PlotWavefunctionSVD.f90 RMatPropCore.o AdiabaticPotential.o SVDChannelBasis.o
+	${CMP} ${DEBUG} ${FORCEDP} ${CMPFLAGS} -c PlotWavefunctionSVD.f90
+
+# Bound-state SVD calculation (see SVDBound.f90 header) -- single Gauss-Lobatto DVR grid,
+# Dirichlet-Dirichlet, one direct Mydsyev diagonalization; no R-matrix machinery involved.
+SVDBOUND_OBJS = besselnew.o Bsplines.o matrix_stuff.o Quadrature.o Interpolation.o Potential.o adiabaticSolver1D.o RMatPropCore.o AdiabaticPotential.o SVDChannelBasis.o SVDBound.o
+
+SVDBound.x: ${SVDBOUND_OBJS}
+	${CMP} ${DEBUG} ${SVDBOUND_OBJS} ${INCLUDE} ${ARPACK} ${LAPACK} ${CMPFLAGS} ${FORCEDP} -o SVDBound.x
+
+SVDBound.o: SVDBound.f90 RMatPropCore.o AdiabaticPotential.o SVDChannelBasis.o
+	${CMP} ${DEBUG} ${FORCEDP} ${CMPFLAGS} -c SVDBound.f90
+
+# Wigner-Eisenbud-form single-box R-matrix (see SVDRmat.f90 header) -- one energy-
+# independent diagonalization of SVDBound.f90's own T+V, R(E) from the pole sum.
+SVDRMAT_OBJS = besselnew.o Bsplines.o matrix_stuff.o Quadrature.o Interpolation.o Potential.o adiabaticSolver1D.o RMatPropCore.o AdiabaticPotential.o SVDChannelBasis.o SVDRmat.o
+
+SVDRmat.x: ${SVDRMAT_OBJS}
+	${CMP} ${DEBUG} ${SVDRMAT_OBJS} ${INCLUDE} ${ARPACK} ${LAPACK} ${CMPFLAGS} ${FORCEDP} -o SVDRmat.x
+
+SVDRmat.o: SVDRmat.f90 RMatPropCore.o AdiabaticPotential.o SVDChannelBasis.o
+	${CMP} ${DEBUG} ${FORCEDP} ${CMPFLAGS} -c SVDRmat.f90
+
+# B-spline single-box free-particle test, 2019/DeltaScat-style simple boundary condition
+# (see BSplineFree.f90 header) -- no BuildBox1CombinedBasis, no tabulated interpolation.
+BSPLINEFREE_OBJS = besselnew.o Bsplines.o matrix_stuff.o Quadrature.o Interpolation.o Potential.o adiabaticSolver1D.o RMatPropCore.o BSplineFree.o
+
+BSplineFree.x: ${BSPLINEFREE_OBJS}
+	${CMP} ${DEBUG} ${BSPLINEFREE_OBJS} ${INCLUDE} ${ARPACK} ${LAPACK} ${CMPFLAGS} ${FORCEDP} -o BSplineFree.x
+
+BSplineFree.o: BSplineFree.f90 RMatPropCore.o
+	${CMP} ${DEBUG} ${FORCEDP} ${CMPFLAGS} -c BSplineFree.f90
+
 matrix_stuff.o: $(LIB_DIR)/matrix_stuff.f90
 	${CMP} ${FORCEDP} ${CMPFLAGS} -c $(LIB_DIR)/matrix_stuff.f90
 
@@ -73,8 +149,8 @@ besselnew.o:	besselnew.f
 Quadrature.mod: Quadrature.o
 		${CMP} ${FORCEDP} Quadrature.o
 
-Quadrature.o: Quadrature.f90
-	${CMP} ${FORCEDP} -c Quadrature.f90
+Quadrature.o: $(LIB_DIR)/Quadrature.f90
+	${CMP} ${FORCEDP} -c $(LIB_DIR)/Quadrature.f90
 
 # --- SVD R-matrix propagator: interfaces with Adiabatic-Scattering-BoundStates'
 # OneDimChannels (adiabaticSolver1D.f90) for per-R adiabatic channel data. Links
@@ -113,6 +189,14 @@ AnalyticSVDChannelBasis.o: AnalyticSVDChannelBasis.f90 SVDChannelBasis.o Quadrat
 RobinSVDChannelBasis.o: RobinSVDChannelBasis.f90 SVDChannelBasis.o RMatPropCore.o Quadrature.o
 	${CMP} ${DEBUG} ${FORCEDP} ${CMPFLAGS} -c RobinSVDChannelBasis.f90
 
+HYBRIDSVD_OBJS = $(SVD_OBJS) RMATPROPHybridSVD.o
+
+RMATPROPHybridSVD.x: ${HYBRIDSVD_OBJS}
+	${CMP} ${DEBUG} ${HYBRIDSVD_OBJS} ${INCLUDE} ${ARPACK} ${LAPACK} ${CMPFLAGS} ${FORCEDP} -o RMATPROPHybridSVD.x
+
+RMATPROPHybridSVD.o: RMATPROPHybridSVD.f90 RMatPropCore.o AdiabaticPotential.o SVDChannelBasis.o
+	${CMP} ${DEBUG} ${FORCEDP} ${CMPFLAGS} -c RMATPROPHybridSVD.f90
+
 # All-analytic-SVD delta-function benchmark driver (see RMATPROPHybridSVDAnalytic.f90 header) --
 # every box built by AnalyticSVDChannelBasis.f90, no B-spline/OneDimChannels/FitLeff.data
 # dependency at all. Not part of `all`; build/run separately.
@@ -142,6 +226,33 @@ AdiabaticInterfaces.o: $(LIB_DIR)/AdiabaticInterfaces.f90
 
 AdiabaticSolverGeneric.o: $(LIB_DIR)/AdiabaticSolverGeneric.f90 AdiabaticInterfaces.o
 	${CMP} ${FORCEDP} ${CMPFLAGS} -c $(LIB_DIR)/AdiabaticSolverGeneric.f90
+
+# Generic drop-in replacement for SVDChannelBasis.f90's BuildSVDBox (see file header) --
+# builds an SVD box from ANY AdiabaticInterfaces-conforming PotentialProc/GridMakerProcI/
+# RobinCoeffProc plugin instead of hardcoding a call to OneDimChannels. This is the engine
+# VeffAtomIon1D's atom-ion pipeline plugs into via AtomIonPotential.f90's own procs.
+GENERICSVD_OBJS = $(SVD_OBJS) AdiabaticInterfaces.o AdiabaticSolverGeneric.o GenericSVDChannelBasis.o
+
+GenericSVDChannelBasis.o: GenericSVDChannelBasis.f90 RMatPropCore.o Quadrature.o AdiabaticInterfaces.o AdiabaticSolverGeneric.o SVDChannelBasis.o
+	${CMP} ${DEBUG} ${FORCEDP} ${CMPFLAGS} -c GenericSVDChannelBasis.f90
+
+# Delta-function plugin (PotentialProc/GridMakerProcI/RobinCoeffProc) for the generic engine --
+# the AdiabaticInterfaces-conforming counterpart to adiabaticSolver1D.f90's hardcoded physics.
+DeltaFunctionPlugins.o: DeltaFunctionPlugins.f90 RMatPropCore.o AdiabaticInterfaces.o
+	${CMP} ${DEBUG} ${FORCEDP} ${CMPFLAGS} -c DeltaFunctionPlugins.f90
+
+# Generic hybrid-SVD driver engine (RunHybridSVDGeneric), physics-agnostic -- see
+# RMATPROPHybridSVDGenericDelta.f90 for the delta-function plugin instantiation.
+RMATPROPHybridSVDGeneric.o: RMATPROPHybridSVDGeneric.f90 RMatPropCore.o AdiabaticInterfaces.o SVDChannelBasis.o GenericSVDChannelBasis.o
+	${CMP} ${DEBUG} ${FORCEDP} ${CMPFLAGS} -c RMATPROPHybridSVDGeneric.f90
+
+HYBRIDSVDGENERICDELTA_OBJS = ${GENERICSVD_OBJS} DeltaFunctionPlugins.o RMATPROPHybridSVDGeneric.o RMATPROPHybridSVDGenericDelta.o
+
+RMATPROPHybridSVDGenericDelta.x: ${HYBRIDSVDGENERICDELTA_OBJS}
+	${CMP} ${DEBUG} ${HYBRIDSVDGENERICDELTA_OBJS} ${INCLUDE} ${ARPACK} ${LAPACK} ${CMPFLAGS} ${FORCEDP} -o RMATPROPHybridSVDGenericDelta.x
+
+RMATPROPHybridSVDGenericDelta.o: RMATPROPHybridSVDGenericDelta.f90 RMatPropCore.o RMATPROPHybridSVDGeneric.o DeltaFunctionPlugins.o
+	${CMP} ${DEBUG} ${FORCEDP} ${CMPFLAGS} -c RMATPROPHybridSVDGenericDelta.f90
 
 clean:
 	rm -f *.mod *.o *.x
