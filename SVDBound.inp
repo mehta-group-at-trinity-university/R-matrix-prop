@@ -1,0 +1,14 @@
+DataDir
+3bodydata_free_5ch
+
+LobattoPoints  NumStates  Order1D  Left1D  Right1D
+200            5          5        1       0
+
+xNumPoints1D  xMin1D  xMax1D  LegPoints1D
+200           0.d0    1.570796326794897d0  10
+
+Shift1D
+-1.d0
+
+NumEigsToPlot
+10

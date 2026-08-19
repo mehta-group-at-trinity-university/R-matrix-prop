@@ -1,0 +1,12 @@
+DataDir
+3bodydata_real_5ch
+
+Order  xNumPoints  LegPoints
+5      10          10
+
+NumBoxes  xMin  xMax
+100       0.4d0 40.0d0
+
+Emin  Emax  NumEnergies
+-0.9999999635d0 -0.02d0 100
+quadratic

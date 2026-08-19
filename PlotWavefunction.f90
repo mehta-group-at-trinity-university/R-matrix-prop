@@ -143,7 +143,13 @@ PROGRAM PlotWavefunction
   WRITE(6,*) "xMax = ", BPD1%xr, " reducedmass = ", reducedmass, " EnergyLocal = ", EnergyLocal, &
        " Threshold(1) = ", Threshold(1)
 
-  ! Evaluate u(R) = sum_ix cfull(ix)*basis_ix(R) at all quadrature points spanning the box.
+  ! Evaluate u(R) = sum_ix cfull((ix-1)*NumChannels+1)*basis_ix(R) at all quadrature
+  ! points spanning the box -- channel 1 only (the only open channel here). cfull's
+  ! index follows the SAME global flat convention as EIG%Gam0/Overlap/Lam everywhere
+  ! else in RMatPropCore.f90 ((ix-1)*NumChannels+channel, e.g. CalcGamLam at
+  ! RMatPropCore.f90:309) -- indexing it by ix alone (as an earlier version of this
+  ! loop did) silently picked up a scramble of different channels' coefficients at
+  ! different spatial points whenever NumChannels>1, not channel 1's own coefficients.
   OPEN(unit=99,file='FEM_wavefunction.dat',status='replace')
   DO kx = 1,BPD1%xNumPoints-1
      DO lx = 1,LegPoints
@@ -153,9 +159,9 @@ PROGRAM PlotWavefunction
           uval = 0d0
           DO ix = 1,BPD1%xDim
              IF (ix.EQ.1) THEN
-                uval = uval + cfull(ix)*u1Box1(lx,kx,1)
+                uval = uval + cfull((ix-1)*NumChannels+1)*u1Box1(lx,kx,1)
              ELSE
-                uval = uval + cfull(ix)*BPD1%u(lx,kx,ix)
+                uval = uval + cfull((ix-1)*NumChannels+1)*BPD1%u(lx,kx,ix)
              ENDIF
           ENDDO
           WRITE(99,*) Rval, uval

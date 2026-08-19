@@ -379,6 +379,36 @@ END MODULE DataStructures
 
   END SUBROUTINE CalcGamLam
   !****************************************************************************************************
+  ! Cheap re-fill of ONLY the boundary Lambda matrix for a standard (non-SVD) CalcGamLam box, when
+  ! NumOpenL/NumOpenR change (e.g. a box whose right edge is the outer/dynamic scattering boundary,
+  ! so NumOpenR = NumOpenChannels(Energy) varies across an energy scan) but the box's own geometry/
+  ! potential do not. Leaves EIG%Gam0/Overlap untouched -- the caller must have already populated
+  ! them (e.g. from a cached CalcGamLam call done once, outside the energy loop) and must NOT zero
+  ! them itself. Exact analog of SVDChannelBasis.f90's RebuildSVDBoxLam for this box type: skips
+  ! CalcGamLam's expensive Galerkin double integration (the dominant per-energy cost otherwise) by
+  ! reusing its formula for the (trivial, O(NumOpenL+NumOpenR)) boundary-Lambda block only.
+  SUBROUTINE RebuildGamLamBoundary(BPD,EIG,NumOpenL,NumOpenR)
+    USE DataStructures
+    USE GlobalVars
+    IMPLICIT NONE
+    TYPE(BPData), INTENT(in) :: BPD
+    TYPE(GenEigVal) :: EIG
+    INTEGER, INTENT(in) :: NumOpenL, NumOpenR
+    INTEGER :: mch
+
+    EIG%Lam = 0d0
+    IF(BPD%Right.EQ.2) THEN
+       DO mch = 1, NumOpenR
+          EIG%Lam( (BPD%xDim-1)*BPD%NumChannels+mch, (BPD%xDim-1)*BPD%NumChannels+mch ) = BPD%xr**(EffDim-1d0-2d0*AlphaFactor)
+       ENDDO
+    ENDIF
+    IF(BPD%Left.EQ.2) THEN
+       DO mch = 1, NumOpenL
+          EIG%Lam(mch,mch) = BPD%xl**(EffDim-1d0-2d0*AlphaFactor)
+       ENDDO
+    ENDIF
+  END SUBROUTINE RebuildGamLamBoundary
+  !****************************************************************************************************
   ! Cheap per-energy recombination of the energy-independent Gam0/Overlap (built once per
   ! box by CalcGamLam) into the actual Gam PartitionAndEliminate needs -- avoids redoing
   ! the full quadrature/integration in CalcGamLam at every energy in a scan.
@@ -1029,6 +1059,16 @@ END MODULE DataStructures
          IF (UseOuterOrderZero) THEN
             CALL hyperrjry(INT(d),alpha,0d0,k(i)*rm,rhypj,rhypy,rhypjp,rhypyp)
          ELSE
+            ! order=Leff directly (unmodified) -- the validated convention, matching
+            ! CalcGamLam/CalcGamLamBox1's existing AlphaFactor*(AlphaFactor-EffDim+2)/R^2
+            ! correction term as originally written (do not assume that term has a sign
+            ! error without independent confirmation -- an attempted sign flip, tested
+            ! against the free-particle diagnostic, made the box's own internal regularity
+            ! matching in BuildBox1CombinedBasis -- which independently uses order=Leff at
+            ! line ~470 and was left unchanged -- inconsistent with the bulk equation, and
+            ! produced a catastrophically worse K than leaving this alone; reverted).
+            ! sqrt(Leff^2+1/4) was tried for a bare-Uad SVD box with NO correction term
+            ! (SVDChannelBasis.f90's BuildSVDBox) -- not applicable here.
             CALL hyperrjry(INT(d),alpha,BPD%lam(i),k(i)*rm,rhypj,rhypy,rhypjp,rhypyp)
          ENDIF
          !s(i) = dsqrt(mu)*rhypj  ! the factor of sqrt(mu) is for energy normalization

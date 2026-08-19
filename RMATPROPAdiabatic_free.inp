@@ -1,0 +1,12 @@
+DataDir
+3bodydata_free_5ch
+
+Order  xNumPoints  LegPoints
+5      10          10
+
+NumBoxes  xMin  xMax
+5         0.7d0 10.0d0
+
+Emin  Emax  NumEnergies
+0.01d0 1.0d0 50
+linear

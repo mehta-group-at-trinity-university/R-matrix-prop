@@ -1,0 +1,21 @@
+DataDir
+3bodydata_real_5ch
+
+Order  xNumPoints  LegPoints
+5      10          10
+
+NumBoxes  xMin  xMax
+100       0.4d0 40.0d0
+
+Emin  Emax  NumEnergies
+-0.9999999635d0 -0.02d0 100
+quadratic
+
+LSVD  Order1D  Left1D  Right1D
+24    5        1       0
+
+xNumPoints1D  xMin1D  xMax1D  LegPoints1D
+200           0.d0    1.570796326794897d0  10
+
+V2Depth  PotRange  potAlpha
+2.d0     1.0d0     1.d0
