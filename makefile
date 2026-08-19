@@ -254,5 +254,88 @@ RMATPROPHybridSVDGenericDelta.x: ${HYBRIDSVDGENERICDELTA_OBJS}
 RMATPROPHybridSVDGenericDelta.o: RMATPROPHybridSVDGenericDelta.f90 RMatPropCore.o RMATPROPHybridSVDGeneric.o DeltaFunctionPlugins.o
 	${CMP} ${DEBUG} ${FORCEDP} ${CMPFLAGS} -c RMATPROPHybridSVDGenericDelta.f90
 
+# sech^2-well plugin (PotentialProc/GridMakerProcI/RobinCoeffProc) for the generic engine --
+# independent numerical cross-check of RMATPROPAdiabatic.x's tabulated-data baseline on the
+# 3bodydata_sech2_5ch/_fine datasets. See SechFunctionPlugins.f90's own header.
+SechFunctionPlugins.o: SechFunctionPlugins.f90 RMatPropCore.o AdiabaticInterfaces.o
+	${CMP} ${DEBUG} ${FORCEDP} ${CMPFLAGS} -c SechFunctionPlugins.f90
+
+HYBRIDSVDGENERICSECH_OBJS = ${GENERICSVD_OBJS} SechFunctionPlugins.o RMATPROPHybridSVDGeneric.o RMATPROPHybridSVDGenericSech.o
+
+RMATPROPHybridSVDGenericSech.x: ${HYBRIDSVDGENERICSECH_OBJS}
+	${CMP} ${DEBUG} ${HYBRIDSVDGENERICSECH_OBJS} ${INCLUDE} ${ARPACK} ${LAPACK} ${CMPFLAGS} ${FORCEDP} -o RMATPROPHybridSVDGenericSech.x
+
+RMATPROPHybridSVDGenericSech.o: RMATPROPHybridSVDGenericSech.f90 RMatPropCore.o RMATPROPHybridSVDGeneric.o SechFunctionPlugins.o
+	${CMP} ${DEBUG} ${FORCEDP} ${CMPFLAGS} -c RMATPROPHybridSVDGenericSech.f90
+
+# Same SechFunctionPlugins.f90 physics as above, but for the THREE-IDENTICAL-BOSON case (domain
+# [0,pi/6], Left/Right=1/1) instead of the 2-fermion+1-distinguishable case (domain [0,pi/2],
+# Left/Right=1/0) -- cross-checks RMATPROPAdiabatic.x's 3bodydata_sech2_3boson* baseline.
+HYBRIDSVDGENERICSECH3BOSON_OBJS = ${GENERICSVD_OBJS} SechFunctionPlugins.o RMATPROPHybridSVDGeneric.o RMATPROPHybridSVDGenericSech3Boson.o
+
+RMATPROPHybridSVDGenericSech3Boson.x: ${HYBRIDSVDGENERICSECH3BOSON_OBJS}
+	${CMP} ${DEBUG} ${HYBRIDSVDGENERICSECH3BOSON_OBJS} ${INCLUDE} ${ARPACK} ${LAPACK} ${CMPFLAGS} ${FORCEDP} -o RMATPROPHybridSVDGenericSech3Boson.x
+
+RMATPROPHybridSVDGenericSech3Boson.o: RMATPROPHybridSVDGenericSech3Boson.f90 RMatPropCore.o RMATPROPHybridSVDGeneric.o SechFunctionPlugins.o
+	${CMP} ${DEBUG} ${FORCEDP} ${CMPFLAGS} -c RMATPROPHybridSVDGenericSech3Boson.f90
+
+# Standalone A/B comparator (Validation Playbook technique): single-channel, single-box R-matrix,
+# tabulated/adiabatic path vs SVD/direct path, for the SAME 3-identical-boson sech^2 physics --
+# isolates box construction from CalcK's asymptotic matching and from the full driver's cost.
+COMPARERMATRIX_OBJS = ${GENERICSVD_OBJS} SechFunctionPlugins.o CompareRmatrixSVDvsAdiabatic.o
+
+CompareRmatrixSVDvsAdiabatic.x: ${COMPARERMATRIX_OBJS}
+	${CMP} ${DEBUG} ${COMPARERMATRIX_OBJS} ${INCLUDE} ${ARPACK} ${LAPACK} ${CMPFLAGS} ${FORCEDP} -o CompareRmatrixSVDvsAdiabatic.x
+
+CompareRmatrixSVDvsAdiabatic.o: CompareRmatrixSVDvsAdiabatic.f90 RMatPropCore.o AdiabaticPotential.o SechFunctionPlugins.o GenericSVDChannelBasis.o
+	${CMP} ${DEBUG} ${FORCEDP} ${CMPFLAGS} -c CompareRmatrixSVDvsAdiabatic.f90
+
+# Box-by-box wavefunction reconstruction, single channel, adiabatic B-spline chain vs SVD/direct
+# chain -- extends CompareRmatrixSVDvsAdiabatic.x's single-box test to a genuine multi-box chain.
+PLOTWAVEFUNCTIONBOXBYBOX_OBJS = ${GENERICSVD_OBJS} SechFunctionPlugins.o PlotWavefunctionBoxByBox.o
+
+PlotWavefunctionBoxByBox.x: ${PLOTWAVEFUNCTIONBOXBYBOX_OBJS}
+	${CMP} ${DEBUG} ${PLOTWAVEFUNCTIONBOXBYBOX_OBJS} ${INCLUDE} ${ARPACK} ${LAPACK} ${CMPFLAGS} ${FORCEDP} -o PlotWavefunctionBoxByBox.x
+
+PlotWavefunctionBoxByBox.o: PlotWavefunctionBoxByBox.f90 RMatPropCore.o AdiabaticPotential.o SechFunctionPlugins.o GenericSVDChannelBasis.o
+	${CMP} ${DEBUG} ${FORCEDP} ${CMPFLAGS} -c PlotWavefunctionBoxByBox.f90
+
+# Sanity check: does the final propagated Rmat depend on box count (1/2/3 boxes spanning the
+# same total range)? Should not -- isolates BoxMatch chaining correctness from the separate
+# wavefunction-reconstruction-only kink issue.
+TESTBOXCOUNTRMAT_OBJS = ${GENERICSVD_OBJS} SechFunctionPlugins.o TestBoxCountRmat.o
+
+TestBoxCountRmat.x: ${TESTBOXCOUNTRMAT_OBJS}
+	${CMP} ${DEBUG} ${TESTBOXCOUNTRMAT_OBJS} ${INCLUDE} ${ARPACK} ${LAPACK} ${CMPFLAGS} ${FORCEDP} -o TestBoxCountRmat.x
+
+TestBoxCountRmat.o: TestBoxCountRmat.f90 RMatPropCore.o AdiabaticPotential.o SechFunctionPlugins.o GenericSVDChannelBasis.o
+	${CMP} ${DEBUG} ${FORCEDP} ${CMPFLAGS} -c TestBoxCountRmat.f90
+
+# Direct test: does embedding channel 1 in a NumStates=5 SVD box construction (matching what
+# the production driver actually calls) change its own R-matrix relative to building it alone
+# (NumStates=1, already validated), at E=-0.999 where channels 2-5 are deep closed and should
+# contribute negligibly if the physics genuinely factors as F_1(R)*Phi_1(R,phi)?
+COMPARERMATRIXMULTICHANNEL_OBJS = ${GENERICSVD_OBJS} SechFunctionPlugins.o CompareRmatrixMultichannel.o
+
+CompareRmatrixMultichannel.x: ${COMPARERMATRIXMULTICHANNEL_OBJS}
+	${CMP} ${DEBUG} ${COMPARERMATRIXMULTICHANNEL_OBJS} ${INCLUDE} ${ARPACK} ${LAPACK} ${CMPFLAGS} ${FORCEDP} -o CompareRmatrixMultichannel.x
+
+CompareRmatrixMultichannel.o: CompareRmatrixMultichannel.f90 RMatPropCore.o AdiabaticPotential.o SechFunctionPlugins.o GenericSVDChannelBasis.o
+	${CMP} ${DEBUG} ${FORCEDP} ${CMPFLAGS} -c CompareRmatrixMultichannel.f90
+
+# No-interpolation B-spline-box adiabatic potential (DeltaScat-style: real ARPACK diagonalization
+# directly at each box's own Gauss-Legendre quadrature points via SechFunctionPlugins, not a
+# tabulated-then-interpolated Uad.dat/Pmat.dat/Qmat.dat) -- see this file's own header.
+SechAdiabaticPotentialDirect.o: SechAdiabaticPotentialDirect.f90 RMatPropCore.o AdiabaticInterfaces.o AdiabaticSolverGeneric.o SechFunctionPlugins.o
+	${CMP} ${DEBUG} ${FORCEDP} ${CMPFLAGS} -c SechAdiabaticPotentialDirect.f90
+
+RMATPROPADIABATICDIRECT3BOSON_OBJS = besselnew.o Bsplines.o matrix_stuff.o Quadrature.o Interpolation.o Potential.o adiabaticSolver1D.o RMatPropCore.o AdiabaticInterfaces.o AdiabaticSolverGeneric.o SechFunctionPlugins.o SechAdiabaticPotentialDirect.o RMATPROPAdiabaticDirect3Boson.o
+
+RMATPROPAdiabaticDirect3Boson.x: ${RMATPROPADIABATICDIRECT3BOSON_OBJS}
+	${CMP} ${DEBUG} ${RMATPROPADIABATICDIRECT3BOSON_OBJS} ${INCLUDE} ${ARPACK} ${LAPACK} ${CMPFLAGS} ${FORCEDP} -o RMATPROPAdiabaticDirect3Boson.x
+
+RMATPROPAdiabaticDirect3Boson.o: RMATPROPAdiabaticDirect3Boson.f90 RMatPropCore.o SechAdiabaticPotentialDirect.o
+	${CMP} ${DEBUG} ${FORCEDP} ${CMPFLAGS} -c RMATPROPAdiabaticDirect3Boson.f90
+
 clean:
 	rm -f *.mod *.o *.x

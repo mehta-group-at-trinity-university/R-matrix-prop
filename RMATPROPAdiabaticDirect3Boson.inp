@@ -2,11 +2,11 @@ DataDir
 3bodydata_sech2_3boson
 
 Order  xNumPoints  LegPoints
-5      10          10
+5      20          10
 
 NumBoxes  xMin  xMax
-100       0.0d0 40.0d0
+1         0.0d0 20.0d0
 
 Emin  Emax  NumEnergies
--0.999d0 -0.05d0 30
+-0.999d0 1.0d0 200
 linear

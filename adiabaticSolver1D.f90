@@ -762,39 +762,66 @@ subroutine GridMakerHHL(R, r0, xNumPoints, xMin, xMax, xPoints, CalcNewBasisFunc
   xRswitch = 10.0d0*r0/Pi             ! refine for R > xRswitch (~3.2 for r0=1)
 
   if (R .gt. xRswitch) then
-     x0 = xMin
-     x1 = phi23 - deltax
-     x2 = phi23 + deltax
-     x3 = xMax  - deltax
-     x4 = xMax
-     ! Guard against deltax pushing segments to degenerate or reversed widths
-     if (x1 .le. x0) x1 = x0 + (phi23 - x0)*0.5d0
-     if (x2 .ge. x3) x2 = x3 - (x3 - phi23)*0.5d0
-     k = 1
-     ! Segment 1: [xMin, phi23-deltax] — coarse
-     xDelt = (x1-x0)/dble(xNumPoints/4)
-     do i = 1, xNumPoints/4
-        xPoints(k) = x0 + (i-1)*xDelt
-        k = k + 1
-     enddo
-     ! Segment 2: [phi23-deltax, phi23+deltax] — refined near r23=0
-     xDelt = (x2-x1)/dble(xNumPoints/4)
-     do i = 1, xNumPoints/4
-        xPoints(k) = x1 + (i-1)*xDelt
-        k = k + 1
-     enddo
-     ! Segment 3: [phi23+deltax, xMax-deltax] — coarse
-     xDelt = (x3-x2)/dble(xNumPoints/4)
-     do i = 1, xNumPoints/4
-        xPoints(k) = x2 + (i-1)*xDelt
-        k = k + 1
-     enddo
-     ! Segment 4: [xMax-deltax, xMax] — refined near r12=0
-     xDelt = (x4-x3)/dble(xNumPoints/4-1)
-     do i = 1, xNumPoints/4
-        xPoints(k) = x3 + (i-1)*xDelt
-        k = k + 1
-     enddo
+     if (xMax .le. phi23) then
+        ! Symmetry-reduced domain (e.g. [0,pi/6] for 3 identical bosons) whose right
+        ! edge IS the r23=0 coalescence itself, not strictly interior to it -- the
+        ! ordinary 4-segment scheme below assumes phi23 < xMax strictly, and produces
+        ! a REVERSED (negative-width) segment 3 here even after the degenerate-width
+        ! guard (x3=xMax-deltax=phi23-deltax=x1 exactly when xMax=phi23, so the guard's
+        ! x2 = x3 - (x3-phi23)*0.5d0 = phi23-0.5*deltax still ends up > x3), corrupting
+        ! the B-spline knot vector (non-monotonic xPoints) and crashing ARPACK/LAPACK
+        ! downstream. Fall back to a plain coarse + refined-near-xMax 2-segment split
+        ! instead -- there is no "past phi23" region to refine into in this domain.
+        x0 = xMin
+        x2 = xMax
+        x1 = xMax - deltax
+        if (x1 .le. x0) x1 = x0 + (x2-x0)*0.5d0
+        k = 1
+        xDelt = (x1-x0)/dble(xNumPoints/2)
+        do i = 1, xNumPoints/2
+           xPoints(k) = x0 + (i-1)*xDelt
+           k = k + 1
+        enddo
+        xDelt = (x2-x1)/dble(xNumPoints-xNumPoints/2-1)
+        do i = 1, xNumPoints-xNumPoints/2
+           xPoints(k) = x1 + (i-1)*xDelt
+           k = k + 1
+        enddo
+     else
+        x0 = xMin
+        x1 = phi23 - deltax
+        x2 = phi23 + deltax
+        x3 = xMax  - deltax
+        x4 = xMax
+        ! Guard against deltax pushing segments to degenerate or reversed widths
+        if (x1 .le. x0) x1 = x0 + (phi23 - x0)*0.5d0
+        if (x2 .ge. x3) x2 = x3 - (x3 - phi23)*0.5d0
+        k = 1
+        ! Segment 1: [xMin, phi23-deltax] — coarse
+        xDelt = (x1-x0)/dble(xNumPoints/4)
+        do i = 1, xNumPoints/4
+           xPoints(k) = x0 + (i-1)*xDelt
+           k = k + 1
+        enddo
+        ! Segment 2: [phi23-deltax, phi23+deltax] — refined near r23=0
+        xDelt = (x2-x1)/dble(xNumPoints/4)
+        do i = 1, xNumPoints/4
+           xPoints(k) = x1 + (i-1)*xDelt
+           k = k + 1
+        enddo
+        ! Segment 3: [phi23+deltax, xMax-deltax] — coarse
+        xDelt = (x3-x2)/dble(xNumPoints/4)
+        do i = 1, xNumPoints/4
+           xPoints(k) = x2 + (i-1)*xDelt
+           k = k + 1
+        enddo
+        ! Segment 4: [xMax-deltax, xMax] — refined near r12=0
+        xDelt = (x4-x3)/dble(xNumPoints/4-1)
+        do i = 1, xNumPoints/4
+           xPoints(k) = x3 + (i-1)*xDelt
+           k = k + 1
+        enddo
+     endif
   else
      ! Uniform grid for small R where coalescence singularities are less severe
      x0 = xMin

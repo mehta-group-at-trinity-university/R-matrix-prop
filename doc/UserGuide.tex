@@ -1,0 +1,948 @@
+\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage{hyperref}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{enumitem}
+\usepackage{parskip}
+\usepackage{microtype}
+\usepackage{seqsplit}
+\sloppy
+% \ttb{...} = breakable \texttt{...}: allows a long unbroken identifier/path/signature to
+% wrap inside a narrow table column instead of overflowing into the next one (seqsplit
+% inserts no visible hyphen). Scoped locally to table environments below via
+% \let\texttt\ttb -- NOT redefined globally, since seqsplit breaks when re-expanded in a
+% moving argument (section titles for the ToC/bookmarks).
+\newcommand{\ttb}[1]{{\ttfamily\seqsplit{#1}}}
+
+\hypersetup{colorlinks=true,linkcolor=blue,urlcolor=blue,citecolor=blue}
+
+\lstdefinestyle{fort}{
+  basicstyle=\ttfamily\footnotesize,
+  breaklines=true,
+  columns=fullflexible,
+  keywordstyle=\bfseries,
+  commentstyle=\itshape\color{gray},
+  showstringspaces=false,
+  frame=single,
+  framesep=3pt,
+  backgroundcolor=\color{gray!5}
+}
+\lstset{style=fort}
+
+\newcommand{\file}[1]{\texttt{#1}}
+\newcommand{\sub}[1]{\texttt{#1}}
+\newcommand{\repo}[1]{\textbf{#1}}
+
+\title{The \texttt{R-matrix-prop} Pipeline: A User's Guide\\
+\large Adiabatic, SVD, and Hybrid Multichannel R-Matrix Propagation}
+\author{}
+\date{\today}
+
+\begin{document}
+\maketitle
+\tableofcontents
+
+%============================================================
+\section{Introduction and Big Picture}
+%============================================================
+
+\texttt{R-matrix-prop} propagates a log-derivative/R-matrix outward in hyperradius $R$
+across a chain of ``boxes'' spanning $[x_{\text{Start}},x_{\text{End}}]$, in a basis that is
+rebuilt (or interpolated) box by box, and matches the result to asymptotic reference functions
+at $R=x_{\text{End}}$ to extract $K$/$S$/$T$-matrices, phase shifts, and cross sections. It is
+built for multichannel few-body quantum scattering and bound-state problems in an
+\emph{adiabatic hyperspherical representation}: a fast angular variable $\Omega$ (one or more
+hyperangles) is diagonalized at fixed $R$ to produce channel functions $\Phi_n(R;\Omega)$ and
+potential curves $U_n(R)$, and the slow radial variable $R$ is then propagated through those
+channels.
+
+Over its development this codebase accumulated \emph{two largely independent design axes} that
+every new user needs to understand before touching anything:
+
+\begin{enumerate}
+\item \textbf{How is a box's basis represented radially?}
+  \begin{itemize}
+    \item \emph{Ordinary two-sided B-spline (FEM) box}, via \file{RMatPropCore.f90}'s
+      \sub{MakeBasis}/\sub{CalcGamLam}. This is what \file{RMATPROP2016.f90} and
+      \file{RMATPROPAdiabatic.f90} use.
+    \item \emph{SVD/DVR box} (``slow variable discretization''), via
+      \file{SVDChannelBasis.f90}/\file{GenericSVDChannelBasis.f90}'s
+      \sub{BuildSVDBox}/\sub{BuildSVDBoxGeneric}. A box's radial dependence is represented on a
+      handful of Gauss-Lobatto/Gauss-Radau DVR nodes instead of a dense B-spline mesh, exploiting
+      a channel-overlap-matrix trick (Suno's method) so far fewer radial points are needed per
+      box. This is what the \file{RMATPROPHybridSVD*} family uses.
+  \end{itemize}
+\item \textbf{How is the adiabatic potential $U_n(R)$/$P_{mn}(R)$/$Q_{mn}(R)$ obtained at a
+  given $R$?}
+  \begin{itemize}
+    \item \emph{Tabulate once, then interpolate} (\file{AdiabaticPotential.f90}): read a
+      precomputed table (\file{Uad.dat}/\file{Pmat.dat}/\file{Qmat.dat}, generated once by
+      \repo{Adiabatic-Scattering-BoundStates}) and build a B-spline interpolant over it. Cheap
+      per query, but only as accurate as the tabulation, and has a hard domain floor (Section
+      \ref{sec:gotchas}).
+    \item \emph{Evaluate directly at every quadrature point needed} (this session's
+      \file{SechAdiabaticPotentialDirect.f90}, and \repo{Adiabatic-Scattering-BoundStates}'s
+      \file{DeltaScat.f90} for the delta-function benchmark): run the real per-$R$ diagonalization
+      (or, for \file{DeltaScat}, an exact closed-form formula) at the box's own Gauss-Legendre
+      quadrature points, with no interpolation step and therefore no domain-floor problem at all.
+      More expensive (one ARPACK diagonalization per point, $\sim$0.05\,s each at reasonable
+      angular resolution), but eliminates a whole category of near-origin bugs.
+  \end{itemize}
+\end{enumerate}
+
+These two axes are \emph{orthogonal}: any potential-evaluation strategy can in principle feed
+either box representation. In practice this codebase has historically paired ``tabulate+B-spline
+box'' (\file{RMATPROPAdiabatic.f90}) and ``tabulate+SVD box''
+(\file{RMATPROPHybridSVD.f90}, now superseded), and this session added ``direct+B-spline box''
+(\file{RMATPROPAdiabaticDirect3Boson.f90}) and already had ``direct+SVD box''
+(\file{RMATPROPHybridSVDGeneric.f90}'s \sub{RunHybridSVDGeneric}).
+
+A third, more recent addition is a \textbf{pluggable physics interface}
+(\file{AdiabaticInterfaces.f90}/\file{AdiabaticSolverGeneric.f90}, in the shared
+\texttt{\textasciitilde/Documents/GitHub/lib/}) that lets a new physical problem be added by
+writing exactly three small subroutines (a potential evaluator, a grid maker, and a
+Robin-boundary-condition coefficient function) conforming to three abstract interfaces, instead of
+forking the entire adiabatic-solver machinery per problem the way
+\repo{Adiabatic-Scattering-BoundStates}'s \file{adiabaticSolver1D.f90} historically had to be
+copy-pasted across $\sim$5 sibling repos. \textbf{This is the recommended entry point for solving
+a new Hamiltonian} -- see Section~\ref{sec:newproblem}.
+
+%============================================================
+\section{Where Everything Lives}
+%============================================================
+
+This pipeline spans three locations under \texttt{\textasciitilde/Documents/GitHub/}, which is
+itself \emph{not} a single project but a workspace of $\sim$30 independent git repositories (see
+the top-level \texttt{CLAUDE.md} there for the full workspace map).
+
+{\let\texttt\ttb
+\begin{longtable}{@{}p{3.6cm}p{4.2cm}p{7.5cm}@{}}
+\toprule
+\textbf{Location} & \textbf{Role} & \textbf{Key contents} \\
+\midrule
+\endhead
+\repo{R-matrix-prop} & Main repo. The propagation engine, every driver program, and every
+  physics-plugin file this guide describes (unless noted otherwise). &
+  \file{RMatPropCore.f90}, \file{AdiabaticPotential.f90}, \file{SechFunctionPlugins.f90},
+  \file{SechAdiabaticPotentialDirect.f90}, \file{DeltaFunctionPlugins.f90},
+  \file{SVDChannelBasis.f90}, \file{GenericSVDChannelBasis.f90}, all \file{RMATPROP*.f90}
+  drivers, \file{makefile}. \\
+\repo{Adiabatic-Scattering-BoundStates} (ASB) & Sibling repo. Generates the tabulated datasets
+  \file{RMATPROPAdiabatic.x} consumes, and hosts the independent no-interpolation
+  \file{DeltaScat} benchmark. &
+  \file{adiabaticSolver1D.f90} (\sub{OneDimChannels}, hardcoded potential + \sub{GridMakerHHL}),
+  \file{DriveAdiabaticSolver1D.f90} (driver, writes \file{Uad.dat} etc.), \file{NewFitProg.f}
+  (long-range fit $\to$ \file{Fit.data}/\file{FitLeff.data}), \file{DeltaScat/} (self-contained
+  no-interpolation benchmark, own copy of \file{RMatPropCore.f90}). \\
+\texttt{\textasciitilde/Documents/GitHub/lib/} & Canonical shared numerics, used by many
+  unrelated repos in the workspace -- migrate stale local copies here, don't fork. &
+  \file{Bsplines.f90}, \file{Quadrature.f90}, \file{matrix\_stuff.f90}, \file{besselnew.f90},
+  \file{milne\_core.f90} (has a generic \sub{GridMaker}), \file{AdiabaticInterfaces.f90},
+  \file{AdiabaticSolverGeneric.f90}. \\
+\texttt{\textasciitilde/Documents/GitHub/interpolation/} & Canonical B-spline interpolation
+  library (module \texttt{InterpType}), used by \file{AdiabaticPotential.f90}. &
+  \file{Interpolation.f90}. \\
+\bottomrule
+\end{longtable}}
+
+\textbf{Important:} \repo{R-matrix-prop} keeps its own \emph{local copy} of ASB's
+\file{adiabaticSolver1D.f90} (needed because \file{AdiabaticSolverGeneric.f90}'s
+\sub{OneDimChannelsGeneric} links directly against several bare subroutines defined inside it --
+\sub{CalcOverlap}, \sub{CalcPHF}, \sub{FixPhase}, \sub{CalcEigenErrors} -- and a separate local
+copy avoided a link-time symbol collision when this was first set up). \textbf{The two copies must
+be kept in sync by hand.} If you fix a bug in one (as this session did for \sub{GridMakerHHL}'s
+domain-edge case, Section~\ref{sec:gotchas}), port the fix to the other.
+
+%============================================================
+\section{Building the Codebase}
+\label{sec:build}
+%============================================================
+
+\subsection{The \texttt{makefile} pattern}
+
+Every executable follows the same three-part pattern:
+\begin{lstlisting}
+FOO_OBJS = besselnew.o Bsplines.o matrix_stuff.o Quadrature.o Interpolation.o \
+           RMatPropCore.o <physics-specific>.o Foo.o
+
+Foo.x: ${FOO_OBJS}
+	${CMP} ${DEBUG} ${FOO_OBJS} ${INCLUDE} ${ARPACK} ${LAPACK} ${CMPFLAGS} ${FORCEDP} -o Foo.x
+
+Foo.o: Foo.f90 RMatPropCore.o <physics-specific>.o
+	${CMP} ${DEBUG} ${FORCEDP} ${CMPFLAGS} -c Foo.f90
+\end{lstlisting}
+To add a new driver, copy an existing \texttt{*\_OBJS}/\texttt{.x}/\texttt{.o} block for the
+closest existing driver and edit the object list and source filename.
+
+\texttt{makefile} and \texttt{Makefile} are the \emph{same file} (case-insensitive filesystem,
+same inode) -- don't edit one expecting the other to diverge.
+
+\subsection{Compiler flags}
+
+\texttt{DEBUG = -fcheck=all} \textbf{unconditionally}, on every target. This is deliberate: there
+is no automated test suite for this codebase, so bounds/shape runtime checking is the main safety
+net. Don't strip it for a ``performance run'' without checking whether the user actually wants
+that trade-off. On macOS, LAPACK/BLAS come from \texttt{-framework Accelerate}; ARPACK (needed by
+every adiabatic-diagonalization path) from Homebrew, \texttt{-L/opt/homebrew/lib/ -larpack}
+\texttt{-I/opt/homebrew/include}.
+
+\subsection{Running}
+
+Almost every driver reads its parameters from a hardcoded input filename via plain
+\texttt{OPEN(unit=7,file='Foo.inp',status='old')} -- \textbf{not} from stdin redirection or a
+command-line argument, despite what \texttt{./Foo.x < Foo.inp} might suggest. Several drivers
+(\file{RMATPROPAdiabatic.x}, \file{DeltaScat.x}) share one hardcoded input filename across
+multiple physical configurations (e.g. \file{RMATPROPAdiabatic.inp}), so switching datasets means
+\emph{copying} the config file you want over that hardcoded name, running, and copying it back --
+there is no built-in multi-config support. \file{ASB}'s \file{DriveAdiabaticSolver1D.f90} and
+\file{RMATPROPHybridSVDGeneric*} family are the exceptions: they genuinely read from stdin or
+their own uniquely-named \texttt{.inp} file.
+
+\subsection{Build gotchas}
+
+\begin{itemize}
+\item \textbf{\sub{GridMaker} name collisions.} At least three incompatible subroutines named
+  \sub{GridMaker} exist in files that can end up linked into the same executable:
+  \sub{GridMaker(grid,numpts,E1,E2,scale)} (the generic multi-mode one, in
+  \file{lib/milne\_core.f90} and duplicated locally in \file{RMatPropCore.f90}), and
+  \sub{GridMaker(mu,R,r0,xNumPoints,xMin,xMax,xPoints,CalcNewBasisFunc)} (the hyperspherical
+  angular-grid one, in \file{adiabaticSolver1D.f90}). Fortran has no namespacing for bare
+  external subroutines, so linking both into one executable is a hard duplicate-symbol error.
+  This session hit exactly this when adding a generic-grid \sub{GridMaker} call to ASB's
+  \file{DriveAdiabaticSolver1D.f90} (which already links \file{adiabaticSolver1D.f90}); the fix
+  was to rename the newly-added copy to \sub{GridMakerScale} (see
+  \file{DriveAdiabaticSolver1D.f90}'s own header comment). \textbf{Before adding any new source
+  file to a build target, grep the whole object list for the subroutine names you're about to
+  introduce.}
+\item \textbf{\file{GaussLobatto.dat}/Gauss-Radau tables.} \sub{GetGaussLobattoFactors} (used by
+  the SVD/DVR box builders) looks up nodes/weights by exact point count in a text table,
+  \file{GaussLobatto.dat} -- it does \emph{not} compute them on the fly, and only a handful of
+  point counts are pre-tabulated (6, 8, 10, 12, \ldots, 200). The \texttt{'LobattoDirichlet'}
+  \texttt{GridType} (Section~\ref{sec:box1bc}) needs \emph{both} $L$ and $L+1$ present
+  simultaneously, which \emph{no pair} in the shipped table satisfies -- this session had to
+  compute and append two new blocks (N=20,21) with a short Python/\texttt{numpy.polynomial}
+  script, matching the file's existing tab-separated format exactly. If you pick a new $L$, check
+  the table first. Gauss-Radau nodes, by contrast, are computed on the fly (via
+  \sub{GetGaussRadauFactors} in \file{SVDChannelBasis.f90}, a DSTEV-based routine added in this
+  project's own history) -- no table dependency there.
+\item \texttt{Legendre.dat} must exist in the working directory at runtime (read by
+  \sub{GetGaussFactors}); it's not regenerated.
+\end{itemize}
+
+%============================================================
+\section{File and Subroutine Reference}
+%============================================================
+
+This section is organized bottom-up: shared numerics, then \texttt{R-matrix-prop}'s own
+physics-independent engine, then the physics-provider layer (where a new problem's code lives),
+then the driver programs, then ASB's dataset-generation side.
+
+\subsection{Layer 0 -- Shared numerics (\texttt{\textasciitilde/Documents/GitHub/lib/})}
+
+\begin{description}
+\item[\file{Bsplines.f90}] \hfill \\
+  \sub{CalcBasisFuncsBP(Left,Right,kLeft,kRight,Order,xPoints,LegPoints,xLeg,MatrixDim,}
+  \sub{xBounds,xNumPoints,Deriv,u)}: builds B-spline basis function values (\texttt{Deriv=0}) or
+  second derivatives (\texttt{Deriv=2}) at every Gauss-Legendre quadrature point, respecting the
+  boundary condition codes:
+  \begin{center}
+  \let\texttt\ttb
+  \begin{tabular}{cl}
+  \toprule
+  Code & Meaning \\
+  \midrule
+  0 & Dirichlet ($u=0$ at that edge) -- single boundary function, built from B-spline index 2 only \\
+  1 & Neumann ($u'=0$) -- single boundary function, $B_1+B_2$ \\
+  2 & Open -- \emph{both} $B_1,B_2$ independently retained (no constraint imposed at all) \\
+  3 & Robin ($u'=k\,u$) -- single boundary function, $B_1+B_2/\text{const}(k)$ \\
+  \bottomrule
+  \end{tabular}
+  \end{center}
+  Codes 0 and 3 give the \emph{same} knot-vector size (one fewer function than code 2); the
+  difference is purely which linear combination of $B_1,B_2$ is used, i.e. what value that one
+  remaining function actually takes at the edge. Code 2's ``do nothing, keep both'' is what
+  \texttt{R-matrix-prop} actually uses for box 1's inner edge in modern drivers -- the boundary
+  condition is imposed \emph{variationally} afterward by \sub{PartitionAndEliminate}, not by the
+  basis construction itself (Section~\ref{sec:box1bc}).
+\item[\file{Quadrature.f90}] \hfill \\
+  \sub{GetGaussFactors(File,Points,x,w)} -- Gauss-Legendre nodes/weights, computed on the fly. \\
+  \sub{GetGaussLobattoFactors(File,Points,x,w)} -- table lookup in \file{GaussLobatto.dat}
+  (Section~\ref{sec:build}'s gotcha above). \\
+  Also contains Cash-Karp ODE coefficients (\sub{initCashKarp}) -- unused by anything in this
+  pipeline; only relevant to Milne-equation solvers elsewhere in the workspace.
+\item[\file{matrix\_stuff.f90}] \hfill \\
+  \sub{MyDsband} -- wraps ARPACK's \texttt{dsband} (banded shift-invert Lanczos eigensolver); this
+  is what every adiabatic per-$R$ diagonalization ultimately calls. \\
+  \sub{CalcEigenErrors}, \sub{FixPhase} (enforces sign continuity of eigenvectors across
+  successive $R$ -- \textbf{critical}: DSYGV/ARPACK's per-$R$ eigenvector sign is arbitrary, and an
+  uncorrected sign flip between adjacent $R$ corrupts any cross-$R$ overlap/coupling calculation),
+  \sub{CalcOverlap}, \sub{CalcPHF} (Hellmann-Feynman $P$-matrix, $P_{mn}=\langle\Phi_m|\partial_R
+  \Phi_n\rangle$).
+\item[\file{milne\_core.f90}] \hfill \\
+  \sub{GridMaker(grid,numpts,E1,E2,scale)}: the canonical general-purpose 1D grid generator, 8
+  modes selected by the \texttt{scale} string:
+  \begin{center}
+  \let\texttt\ttb
+  \begin{tabular}{ll}
+  \toprule
+  \texttt{scale} & Formula ($t=(i-1)/(\text{numpts}-1)$) \\
+  \midrule
+  \texttt{"linear"} & $E_1+t\,(E_2-E_1)$ \\
+  \texttt{"log"} & $\exp(\ln E_1+t(\ln E_2-\ln E_1))$ (requires $E_1,E_2>0$) \\
+  \texttt{"neglog"} & log-spacing for negative $E_1,E_2$ \\
+  \texttt{"quadratic"} & $E_1+t^2(E_2-E_1)$ \\
+  \texttt{"cubic"}, \texttt{"quartic"} & $E_1+t^3(E_2-E_1)$, $E_1+t^4(E_2-E_1)$ \\
+  \texttt{"sqrroot"}, \texttt{"cuberoot"} & $E_1+t^{1/2}(E_2-E_1)$, $E_1+t^{1/3}(E_2-E_1)$ \\
+  \bottomrule
+  \end{tabular}
+  \end{center}
+  \textbf{Beware}: an unrecognized \texttt{scale} string silently leaves the array uninitialized
+  past index 1 -- there is no \texttt{ELSE}/error branch. Also beware the \emph{unrelated},
+  differently-parameterized \sub{GridMakerQuadratic(xNumPoints,xMin,xMax,xPoints)} found in some
+  other workspace repos (\file{LiScattering/CalcBound1D.f90},
+  \file{TuneVeff/CalcBound1D.f90}): that one's formula is $t^2\,x_{\max}+x_{\min}$, not
+  $x_{\min}+t^2(x_{\max}-x_{\min})$ -- they only agree when $x_{\min}=0$. Don't mix them up.
+\item[\file{AdiabaticInterfaces.f90}] \hfill \\
+  Three \texttt{ABSTRACT INTERFACE} declarations that any new-physics plugin must conform to:
+\begin{lstlisting}
+SUBROUTINE PotentialProc(R,LegPoints,xNumPoints,x0,Pot,dPot)
+  ! Pot/dPot(LegPoints,xNumPoints) = V and dV/dR at the already-mapped
+  ! angular quadrature points x0(lx,kx), at fixed hyperradius R.
+
+SUBROUTINE GridMakerProcI(R,xNumPoints,xMin,xMax,xPoints,CalcNewBasisFunc)
+  ! Returns the angular knot grid xPoints at radius R (may depend on R).
+
+SUBROUTINE RobinCoeffProc(R,kLeft,kRight)
+  ! Returns the Robin (Left/Right=3) log-derivative coefficients at R.
+  ! For non-Robin BC codes (0/1/2), return the sentinel 1d20 -- never read.
+\end{lstlisting}
+\item[\file{AdiabaticSolverGeneric.f90}] \hfill \\
+  \sub{OneDimChannelsGeneric(NumStates,PsiDim,PsiFlag,CouplingFlag,LegendreFile,LegPoints,}
+  \sub{Shift,Order,Left,Right,mu,xNumPoints,xMin,xMax,R,RSteps,GridRebuildEveryR,RAnchor,}
+  \sub{MyPotential,MyGridMaker,MyRobinCoeff,Ufile,Pfile,Qfile,dPfile,VQfile,Uad,Psi,S\_out,}
+  \sub{datadir)} -- a generalized, pluggable drop-in analog of ASB's \sub{OneDimChannels}: same
+  ARPACK shift-invert diagonalization, \sub{FixPhase}, \sub{CalcPHF} machinery, but the
+  potential/grid/BC come from the three caller-supplied procedures above instead of a hardcoded
+  \texttt{use potential} + \sub{GridMakerHHL} pipeline. \textbf{\texttt{GridRebuildEveryR} is the
+  single most important argument to get right} -- see Section~\ref{sec:gotchas}.\\
+  \sub{CalcHamiltonianGeneric} -- the potential-agnostic Hamiltonian-matrix assembly
+  \sub{OneDimChannelsGeneric} calls internally; structurally identical to ASB's own
+  \sub{CalcHamiltonian} but takes \texttt{Pot}/\texttt{dPot} values from \sub{MyPotential} instead
+  of a hardcoded pairwise-distance calculation.
+\end{description}
+
+\subsection{Layer 1 -- \texttt{R-matrix-prop}'s core engine (\file{RMatPropCore.f90})}
+
+Everything in this file is \textbf{physics-independent}: it operates purely on
+\texttt{BPD\%Pot}/\texttt{BPD\%Pcoup} (already filled by whichever physics-provider routine you
+call) and never evaluates a potential itself.
+
+\begin{description}
+\item[Module \texttt{GlobalVars}] Run-wide scalars: \texttt{NumChannels}, \texttt{xStart},
+  \texttt{xEnd}, \texttt{reducedmass}, \texttt{AlphaFactor}, \texttt{EffDim}, \texttt{NumBoxes},
+  \texttt{Energy}, \texttt{Pi}. \textbf{\texttt{AlphaFactor} convention}, verbatim from this
+  module's own comment: ``This calculation ALWAYS sets \texttt{AlphaFactor = (EffDim-1)/2} and
+  \texttt{StartBC = 0}'' -- see Section~\ref{sec:box1bc} for what this actually means and when
+  you'd deviate from it. (\texttt{LegPoints}/\texttt{xLeg}/\texttt{wLeg}/\texttt{LegendreFile}
+  live in the \emph{separate} \texttt{Quadrature} module, not here -- an easy mix-up.)
+\item[Module \texttt{DataStructures}] The core derived types:
+\begin{lstlisting}
+TYPE BPData   ! one box's basis + potential
+  INTEGER xNumPoints, xDim, Left, Right, Order, NumChannels, MatrixDim
+  DOUBLE PRECISION, ALLOCATABLE :: u(:,:,:), ux(:,:,:), xPoints(:), x(:,:)
+  DOUBLE PRECISION, ALLOCATABLE :: Pot(:,:,:,:), Pcoup(:,:,:,:), lam(:)
+  DOUBLE PRECISION :: kl, kr, xl, xr
+END TYPE BPData
+
+TYPE GenEigVal   ! one box's assembled generalized-eigenvalue pieces
+  DOUBLE PRECISION, ALLOCATABLE :: Gam(:,:), Gam0(:,:), Overlap(:,:), Lam(:,:)
+  ! Gam0/Overlap: energy-independent, built once and cached; Gam = Gam0 + Energy*Overlap
+  ! (via CombineGam) is what actually gets fed to PartitionAndEliminate.
+END TYPE GenEigVal
+
+TYPE BoxData   ! one box's propagated log-derivative amplitudes
+  INTEGER :: NumOpenL, NumOpenR, betaMax
+  DOUBLE PRECISION, ALLOCATABLE :: Z(:,:), ZP(:,:), ...
+END TYPE BoxData
+
+TYPE ScatData   ! final K/R/S/T matrices
+  DOUBLE PRECISION, ALLOCATABLE :: K(:,:), R(:,:), f(:,:), sigma(:,:)
+  COMPLEX*8, ALLOCATABLE :: S(:,:), T(:,:)
+END TYPE ScatData
+\end{lstlisting}
+  Plus \sub{Allocate*}/\sub{DeAllocate*} for each.
+\item[\sub{MakeBasis(BPD)}] Builds an ordinary two-sided B-spline basis (via
+  \sub{CalcBasisFuncsBP}) and fills \texttt{BPD\%u}/\texttt{BPD\%ux}/\texttt{BPD\%x} for one box,
+  given \texttt{BPD\%xPoints} (the box's internal knot grid) already set.
+\item[\sub{CalcGamLam(BPD,EIG,NumOpenL,NumOpenR)}] Assembles \texttt{EIG\%Gam0}/\texttt{Overlap}/
+  \texttt{Lam} from \texttt{BPD\%Pot}/\texttt{Pcoup} (which some physics-provider routine --
+  \sub{SetAdiabaticPotential}, \sub{SetAdiabaticPotentialDirect}, etc. -- must already have
+  filled). Physics-independent; the same routine serves every driver in the B-spline-box family.
+\item[\sub{CombineGam(EIG,Energy)}] $\texttt{Gam}=\texttt{Gam0}+\texttt{Energy}\times
+  \texttt{Overlap}$.
+\item[\sub{PartitionAndEliminate(BPD,EIG,NumOpenL,NumOpenR,evalRed,evecRed,LamooDiag)} /
+  \sub{PartitionAndEliminateFull}] Variational elimination of closed/interior degrees of freedom,
+  reducing a box to its retained boundary amplitudes. \texttt{NumOpenL=0} is how a box's
+  \emph{left} boundary condition is imposed in the modern (Left=2) box-1 convention -- eliminating
+  a DOF with no coupling out that side is the R-matrix-propagation equivalent of applying whatever
+  boundary condition the underlying basis naturally encodes there. The \texttt{Full} variant also
+  returns eigenvector data needed to reconstruct actual spline coefficients (used only by the
+  \file{PlotWavefunction*} diagnostics).
+\item[\sub{BoxMatch(BA,BB,BPD,evalRed,evecRed,LamooDiag,dim,alphafact)} (via
+  \sub{BoxMatchEigensystem})] Propagates the R-matrix/log-derivative from box \texttt{BA} to box
+  \texttt{BB}.
+\item[\sub{CalcK(B,BPD,SD,mu,d,alpha,EE,Eth)}] Final asymptotic matching at $R=x_{\text{End}}$:
+  projects the propagated log-derivative onto hyperspherical-Bessel/Riccati-Bessel reference
+  functions (via \file{besselnew.f90}'s \sub{hyperrjry}) to produce the $K$-matrix, using each
+  channel's threshold energy \texttt{Eth} and effective angular momentum (\texttt{BPD\%lam},
+  usually called \texttt{Leff} by the caller). \textbf{This is the piece that changes if your new
+  problem's long-range asymptotics aren't of this hyperspherical-Bessel/Coulomb form} -- see
+  Section~\ref{sec:asymptotics}.
+\item[\sub{BuildBox1CombinedBasis}/\sub{CalcGamLamBox1}/\sub{CoulombRegularNumeric}/
+  \sub{BuildBox1NeumannBasis}] \textbf{Legacy.} An older, energy-dependent box-1 mechanism that
+  builds a Robin-type combined basis function (via a closed-form \sub{hyperrjry}-based
+  log-derivative, or numerical RK4 integration of the true near-origin potential for a genuine
+  Coulomb-divergent channel) to approximate the box-1 regularity condition at finite \texttt{xl}.
+  \textbf{\file{RMATPROPAdiabatic.f90} no longer calls any of this} -- its own header comment
+  states it is ``confirmed equivalent to \ldots a plain Neumann box-1 basis'' and now uses the
+  simpler \texttt{Left=2} + \sub{PartitionAndEliminate} approach unconditionally
+  (Section~\ref{sec:box1bc}). This machinery is kept for reference and for any driver that still
+  needs a literal Robin condition at a genuinely nonzero \texttt{xl}.
+\item[\sub{GridMaker(grid,numpts,E1,E2,scale)}, \sub{GridMakerLinear(xNumPoints,x1,x2,xPoints)}]
+  Local copies of the shared utilities described above (see the name-collision warning in
+  Section~\ref{sec:build}).
+\end{description}
+
+\subsection{Layer 2 -- Physics providers (fill \texttt{BPD\%Pot}/\texttt{BPD\%Pcoup}, or build an
+  SVD box directly)}
+
+This is the layer you replace or extend for a new Hamiltonian.
+
+\begin{description}
+\item[\file{AdiabaticPotential.f90} -- tabulate + interpolate] \hfill \\
+  \sub{ReadAdiabaticData(DataDir,NumChannels,NumDataPoints,muLocal,alpha,ddim,Threshold,Leff,}
+  \sub{UInterp,PInterp,QInterp)}: reads \texttt{DataDir/\{Fit.data,masses.dat,Uad.dat,Pmat.dat,}
+  \texttt{Qmat.dat,FitLeff.data\}} and builds B-spline interpolants (order-2, piecewise linear, to
+  avoid Runge ringing) via \texttt{\textasciitilde/Documents/GitHub/interpolation}'s
+  \texttt{InterpType} module. \\
+  \sub{SetAdiabaticPotential(BPD,muLocal,UInterp,PInterp,QInterp,CoulombC)}: evaluates those
+  interpolants at \texttt{BPD}'s own Gauss-Legendre quadrature points, filling
+  $\texttt{Pot}(m,n)=\tilde Q_{mn}(R)/2\mu+\delta_{mn}U_m(R)$ and $\texttt{Pcoup}=P(R)$.
+  \texttt{CoulombC} (per-channel, usually all zero) switches individual channels to an analytic
+  near-origin series (\sub{AnalyticComboNearOrigin}) below \texttt{RcutoffAnalytic=0.01}, for
+  genuinely Coulomb-divergent channels only -- \textbf{do not} infer this from
+  $\texttt{Threshold}<0$ alone; a short-range-potential bound-pair channel also has negative
+  threshold without being Coulomb-divergent (Section~\ref{sec:gotchas}).
+\item[\file{SechFunctionPlugins.f90} -- example \texttt{AdiabaticInterfaces} plugin] \hfill \\
+  \sub{SechPotential}, \sub{SechGridMaker} (an exact replica of ASB's \sub{GridMakerHHL}),
+  \sub{SechRobinCoeff} (trivial sentinel, non-Robin BC). Physics: equal-mass 3-body sech$^2$-well
+  problem, pairwise distances $r_{ij}=\sqrt{2/\sqrt3}\,R\,|\cos(\phi-\text{offset}_{ij})|$. Read
+  this file as the \textbf{template} for a new plugin.
+\item[\file{SechAdiabaticPotentialDirect.f90} -- no-interpolation adiabatic potential for
+  B-spline boxes] \hfill \\
+  \sub{SetAdiabaticPotentialDirect(BPD,muLocal)}: builds the box's own quadrature-point $R$ array
+  (matching \texttt{BPD\%x(lx,kx)}'s layout exactly), calls \sub{OneDimChannelsGeneric} once for
+  the \emph{whole box} (\texttt{CouplingFlag=1} for Hellmann-Feynman $P$/$Q$,
+  \texttt{GridRebuildEveryR=.TRUE.}) with \file{SechFunctionPlugins}, writes $P$/$Q$ to scratch
+  files, and re-reads them with \emph{exactly} \file{AdiabaticPotential.f90}'s own reading
+  convention so the sign/normalization matches automatically. Direct, drop-in replacement for
+  \sub{SetAdiabaticPotential} in any driver, at the cost of $\sim$0.05\,s per quadrature point
+  instead of an interpolation lookup -- \textbf{never call this once per energy}; cache its output
+  per box exactly once (Section~\ref{sec:directcost}).
+\item[\file{DeltaFunctionPlugins.f90}] Closed-form plugin for the equal-mass three-boson
+  delta-function benchmark: \sub{DeltaZeroPotential} ($V\equiv0$ identically), \sub{
+  DeltaWedgeGridMaker} (fixed uniform grid over $\phi\in[0,\pi/6]$), \sub{DeltaRobinCoeff}
+  ($k_{\text{right}}=\sqrt{2\mu}\,R$, encoding the contact interaction as a genuine Robin BC).
+\item[\file{SVDChannelBasis.f90} / \file{GenericSVDChannelBasis.f90}] \hfill \\
+  \sub{BuildSVDBox}/\sub{BuildSVDBoxGeneric(a1,a2,L,NumStates,\ldots,GridType,BPD,EIG,\ldots)}:
+  construct one SVD/DVR box's \texttt{Gam0}/\texttt{Overlap}/\texttt{Lam} \emph{directly} (not via
+  \texttt{BPD\%Pot}/\texttt{Pcoup} -- a structurally different mechanism from the B-spline path),
+  diagonalizing at Gauss-Lobatto or Gauss-Radau DVR nodes and using a channel-overlap-matrix trick
+  to avoid needing a separate radial basis. \texttt{GridType} $\in\{$\texttt{'Radau'},
+  \texttt{'Lobatto'}, \texttt{'LobattoDirichlet'}$\}$ -- see Section~\ref{sec:box1bc}. The
+  \texttt{Generic} variant takes \texttt{MyPotential}/\texttt{MyGridMaker}/\texttt{MyRobinCoeff}
+  (i.e. is pluggable, calling \sub{OneDimChannelsGeneric} internally); the plain version is
+  hardcoded to ASB's \sub{OneDimChannels}.
+\end{description}
+
+\subsection{Layer 3 -- Driver programs}
+
+{\let\texttt\ttb
+\begin{longtable}{@{}p{3.3cm}p{2cm}p{3cm}p{7cm}@{}}
+\toprule
+\textbf{Driver} & \textbf{Box type} & \textbf{Potential source} & \textbf{Notes} \\
+\midrule
+\endhead
+\file{RMATPROP2016.x} & B-spline & Synthetic Baluja multipole potential (\texttt{Baluja} module) &
+  Reproduces the Baluja et al. CPC (1982) benchmark. Reads its own \texttt{RMATPROP.inp}-style
+  format via \sub{ReadGlobal}. \\
+\file{RMATPROPAdiabatic.x} & B-spline & Tabulated + interpolated
+  (\file{AdiabaticPotential.f90}) & Box 1: \texttt{Left=2}, standard elimination (not the legacy
+  Robin mechanism). Last box rebuilt fresh every energy (cheap here, since interpolation lookup is
+  cheap). Energy-independent boxes' \texttt{Gam0}/\texttt{Overlap}/\texttt{Lam} cached once. \\
+\file{RMATPROPAdiabaticDirect3Boson.x} & B-spline & Direct
+  (\file{SechAdiabaticPotentialDirect.f90}) & \textbf{This session.} Same structure as
+  \file{RMATPROPAdiabatic.x} except the last box is \emph{also} cached (via a dedicated
+  \texttt{BPDLast}, built once) -- essential here since re-evaluating the potential is $\sim1000
+  \times$ more expensive than an interpolation lookup. Hardcoded to the equal-mass 3-identical-
+  boson sech$^2$ problem, domain $[0,\pi/6]$, \texttt{Left=Right=1}. Use this file as the
+  \textbf{template} for a new no-interpolation B-spline-box driver. \\
+\file{RMATPROPHybridSVD.x} & SVD (+ B-spline tail) & Tabulated, via
+  \file{SVDChannelBasis.f90}'s own hardcoded \sub{OneDimChannels} call & \textbf{Superseded} by
+  the generic pipeline below; kept buildable but not the recommended starting point. \\
+\file{RMATPROPHybridSVDGeneric.f90} (module \texttt{RMATPROPHybridSVDGenericMod}, subroutine
+  \sub{RunHybridSVDGeneric}) & All-SVD & Pluggable (\texttt{MyPotential}/\texttt{MyGridMaker}/
+  \texttt{MyRobinCoeff}) & \textbf{Not a \texttt{PROGRAM}} -- a reusable subroutine (Fortran
+  \texttt{PROGRAM}s can't take procedure arguments), called by a thin per-physics driver. Takes
+  \texttt{Box1GridType} (\texttt{'Radau'} or \texttt{'LobattoDirichlet'}, added this session --
+  see Section~\ref{sec:box1bc}). Already wires up the general multichannel unitarity check
+  ($\Vert S^\dagger S-I\Vert_\infty$), written to \texttt{Recombination.dat}. \\
+\file{RMATPROPHybridSVDGenericDelta.f90} & All-SVD & \file{DeltaFunctionPlugins.f90} & Thin driver
+  instantiating \sub{RunHybridSVDGeneric} for the delta-function benchmark, \texttt{Box1GridType=}
+  \texttt{'Radau'}. \textbf{Validated}: reproduces \file{RMATPROPHybridSVDRobin.x}'s own results
+  exactly. \\
+\file{RMATPROPHybridSVDGenericSech.f90} & All-SVD & \file{SechFunctionPlugins.f90} & Thin driver
+  for the (2-fermion+1-distinguishable) sech$^2$ case, domain $[0,\pi/2]$. \\
+\file{SVDBound.x} & Single DVR grid & Tabulated & Bound-state solver, one direct diagonalization,
+  no box-chaining. \\
+\file{SVDRmat.x} & Single DVR grid & Tabulated & Wigner-Eisenbud-form R-matrix (pole sum), not the
+  log-derivative propagation approach used elsewhere. \\
+\file{BSplineFree.x} & B-spline & $V=0$ & Free-particle sanity check against the exact solution;
+  deliberately avoids the modern box-1 machinery (2019-era recipe). \\
+\file{PlotWavefunction*.x} & (diagnostic) & n/a & Standalone single-energy/single-box wavefunction
+  reconstructions, validated against independent RK45 integration. \\
+\bottomrule
+\end{longtable}}
+
+\subsection{Layer 4 -- ASB: dataset generation for the tabulate+interpolate path}
+
+Only relevant if you're using \file{AdiabaticPotential.f90} (i.e. \file{RMATPROPAdiabatic.x} or a
+sibling); skip this if you're going the ``direct'' or SVD-pluggable route.
+
+\begin{description}
+\item[\file{adiabaticSolver1D.f90}] \sub{OneDimChannels} (the hardcoded analog of
+  \sub{OneDimChannelsGeneric}: same ARPACK/\sub{FixPhase}/\sub{CalcPHF} machinery, but potential
+  via \texttt{use potential}+\sub{sumpairwisepot} and grid via the hardcoded \sub{GridMakerHHL}).
+  \sub{CalcHamiltonian}, \sub{GridMakerHHL} (non-uniform $\phi$ grid, refines near coalescence
+  points, narrows with $R$ as $\delta x=r_0/R$). \textbf{See Section~\ref{sec:gotchas} for the
+  domain-edge bug fixed here this session.}
+\item[\file{DriveAdiabaticSolver1D.f90}] \texttt{PROGRAM}, reads its parameter file from stdin,
+  writes \texttt{3bodydata/\{Uad,Pmat,Qmat,dPmat,VQmat,masses\}.dat}. The $R$-tabulation grid is
+  now built via a locally-added \sub{GridMakerScale(R,RSteps,RMin,RMax,"quadratic")} (session fix
+  -- was uniform, which left almost no resolution near $R=0$; see
+  Section~\ref{sec:gotchas}).
+\item[\file{NewFitProg.f}] Fits the long-range tail of \texttt{Uad.dat}/\texttt{Pmat.dat}/
+  \texttt{VQmat.dat} (over the last \texttt{Rdelay=10} units of $R$) to produce
+  \texttt{Fit.data} (\texttt{NumChannels}, \texttt{NumDataPoints}, \texttt{alpha=(EffDim-1)/2},
+  \texttt{ddim=EffDim=2} -- hardcoded, this repo's fixed convention) and
+  \texttt{FitLeff.data} (per-channel \texttt{Threshold}, \texttt{Leff}, used by \sub{CalcK}'s
+  asymptotic matching).
+\item[\file{DeltaScat/}] Self-contained, \textbf{independently validated} no-interpolation
+  reference: evaluates the delta-function potential in closed form
+  (\file{KMSFormulas.f}/\file{AnalyticDeltaPotential.f90}) directly at quadrature points, using
+  its \emph{own} local copy of \file{RMatPropCore.f90}. Box 1: \texttt{Left=Right=2},
+  \texttt{xStart=0.0} exactly -- proof that this mechanism is sound at the literal origin.
+  Validated against the exact closed-form Mehta-Shepard atom-dimer $K$-matrix (scattering length
+  to $\sim$0.5\%) and McGuire's exact-elastic-unitarity result ($1-|S_{11}|^2\to0$, confirmed to
+  $10^{-10}$--$10^{-6}$ across the full multichannel positive-energy range). \textbf{Read this
+  file first} if you want to see the ``ideal'' (no tabulation, no interpolation) box-construction
+  pattern before building your own. Its own input file, \texttt{DeltaScat.inp}, is
+  hardcoded-by-name like \texttt{RMATPROPAdiabatic.inp} -- swap configs by copying over it.
+\end{description}
+
+%============================================================
+\section{Box 1: The Regularity/Boundary Condition at $R=x_{\mathrm{Start}}$}
+\label{sec:box1bc}
+%============================================================
+
+This is the single most confusing piece of the whole pipeline, and the source of most of this
+session's debugging. Two \emph{independent} choices interact here and are easy to conflate:
+
+\paragraph{Choice 1: \texttt{AlphaFactor} -- which radial wavefunction are you solving for?}
+$\Psi(R,\Omega)=\sum_n R^{-\alpha}F_n(R)\Phi_n(R,\Omega)$. Two conventional choices:
+\begin{itemize}
+\item $\alpha=0$: $F_n$ \emph{is} the true wavefunction. The kinetic operator keeps a first-
+  derivative term. Regularity at $R\to0$ is an \emph{open} condition -- the true wavefunction just
+  has to stay finite, with no value constraint.
+\item $\alpha=(\text{EffDim}-1)/2$: $F_n$ is the \emph{reduced} wavefunction $u(R)\sim
+  R^{\text{EffDim}-1\over2}\Psi(R)$. This eliminates the first-derivative term from the kinetic
+  operator (manifestly symmetric Hamiltonian, see \texttt{AdiabaticHypersphericalNotes.md} in
+  \repo{Adiabatic-Scattering-BoundStates} for the full derivation), at the cost of introducing a
+  genuine \emph{Dirichlet} regularity condition, $u(0)=0$, since $u\sim R^{\alpha+L}$ for a channel
+  of effective angular momentum $L\ge0$.
+\end{itemize}
+\textbf{\texttt{R-matrix-prop} always uses the second convention}
+($\texttt{AlphaFactor}=(\text{EffDim}-1)/2$, \texttt{StartBC}=0) -- see \texttt{GlobalVars}'s own
+comment. The delta-function benchmark's \emph{SVD}-side plugins
+(\file{RMATPROPHybridSVDGenericDelta.f90}) are the one documented exception, using
+$\alpha=0$ deliberately for that specific reduced-coordinate problem.
+
+\paragraph{Choice 2: how is that boundary condition actually imposed, mechanically?}
+Three mechanisms exist in this codebase, and \textbf{only one of them can literally represent
+$x_{\mathrm{Start}}=0$}:
+\begin{center}
+\let\texttt\ttb
+\begin{tabular}{@{}p{3.2cm}p{3.6cm}p{7cm}@{}}
+\toprule
+Mechanism & Correct for & How \\
+\midrule
+B-spline \texttt{Left=2} + \sub{PartitionAndEliminate} & Either $\alpha$ convention & Both
+  boundary functions retained (no constraint baked into the basis); the boundary DOF is then
+  \emph{variationally eliminated} (\texttt{NumOpenL=0}). Works at literal $R=0$ because the box's
+  Gauss-Legendre quadrature points are always strictly interior to $[x_l,x_r]$ -- $R=0$ is never
+  actually evaluated. \textbf{This is what \file{RMATPROPAdiabatic.f90} and \file{DeltaScat.f90}
+  both actually use}, confirmed identical box geometry/grid construction between them this
+  session. \\
+\texttt{GridType='Radau'} (SVD/DVR) & $\alpha=0$ (open/regularity) & Gauss-Radau quadrature fixes
+  only the \emph{right} endpoint; $a_1$ is structurally never a node at all, so the retained basis
+  is open/unconstrained there -- correct only when that \emph{is} the physical condition. \\
+\texttt{GridType='LobattoDirichlet'} (SVD/DVR) & $\alpha=(\text{EffDim}-1)/2$ (Dirichlet) & $a_1$
+  is a \emph{formal} Lobatto node (needed to build a correct Lagrange derivative operator) whose
+  DOF is then eliminated -- true $u(a_1)=0$. Like the B-spline case, \sub{OneDimChannels}/
+  \sub{OneDimChannelsGeneric} is \emph{never actually evaluated} at $a_1$ itself, regardless of
+  which of these two \texttt{GridType}s is used. \\
+\texttt{BuildBox1CombinedBasis} (\texttt{Left=3}, Robin, legacy) & Neither, in general & Computes
+  a \emph{finite}-radius log-derivative $k_{\text{left}}$ via \sub{hyperrjry} (closed-form) that
+  \emph{approximates} the $\alpha=(\text{EffDim}-1)/2$ Dirichlet limit as $x_l\to0$ ($k_{\text{
+  left}}=L_{\text{eff}}/x_l\to\infty$). \textbf{Cannot represent $x_l=0$ at all} (literal
+  $L/0$), and for large $L_{\text{eff}}$ is numerically fragile even at small nonzero $x_l$
+  (special-function underflow at small argument) -- this session hit exactly this failure mode
+  (astronomic, nonsensical $K$-matrix values) before realizing \file{RMATPROPAdiabatic.f90}
+  doesn't actually call this path any more. \textbf{Not needed for new work}; understand it only
+  if you're reading old code or reviving the Robin-matched approach for a case that genuinely
+  needs a nonzero-radius approximate boundary (e.g. a hard inner wall away from the origin). \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\textbf{Radau cannot represent Dirichlet, structurally} -- Gauss-Radau quadrature has no node at
+$a_1$ at all, so there is no DOF there to eliminate; the two \texttt{GridType}s are not
+interchangeable substitutes for each other despite superficially both being ``avoid evaluating at
+$a_1$'' tricks. Pick the one matching your \texttt{AlphaFactor} convention.
+
+\paragraph{The domain edge doesn't have to be $R=0$.} Everything above generalizes to \emph{any}
+box-1 inner edge, not just the true origin -- e.g. a genuinely nonzero inner cutoff imposed for
+physical reasons. What's specific to $R=0$ is only the additional hard numerical constraint that
+the hyperspherical kinetic prefactor $m=-1/(2\mu R^2)$ (Section~\ref{sec:gotchas}) makes literal
+$R=0$ unusable for \emph{any} mechanism that evaluates the potential exactly there.
+
+%============================================================
+\section{How to Solve a New Hamiltonian}
+\label{sec:newproblem}
+%============================================================
+
+This section walks through the same steps this session actually followed building the sech$^2$
+3-identical-boson case, generalized. Read Sections~\ref{sec:box1bc} and \ref{sec:gotchas} first --
+most of the mistakes described there are exactly the ones a new problem will re-expose.
+
+\subsection*{Step 1: Coordinates}
+Work out your mass-scaled Jacobi transformation and the mapping from your chosen hyperangle(s)
+$\Omega$ to the physical pairwise/interparticle distances the potential actually depends on
+(e.g. $r_{ij}(R,\phi)$ for a 3-body 1D problem). \texttt{AdiabaticHypersphericalNotes.md} (in
+\repo{Adiabatic-Scattering-BoundStates}) derives the general $d$-dimensional Laplacian
+transformation and the Hamiltonian-matrix-element expressions this whole pipeline implements;
+read it once before writing a new plugin, it will save you from re-deriving the
+$\tilde Q=P^2+\partial_R P$ decomposition and the $\alpha=(\text{EffDim}-1)/2$ manifestly-symmetric
+form yourself.
+
+\subsection*{Step 2: Domain and boundary conditions}
+\begin{itemize}
+\item Decide whether you need the \emph{full} angular domain or can exploit permutation/parity
+  symmetry to restrict to a smaller fundamental domain (as this session did, reducing the
+  3-identical-boson sech$^2$ problem from $[0,\pi/2]$ to $[0,\pi/6]$, mirroring what the
+  delta-function benchmark already does for the same symmetry reason). A domain-edge coalescence
+  point requires a grid maker that refines toward that edge, not around an interior point --
+  \file{SechFunctionPlugins.f90}'s \sub{SechGridMaker} vs. \sub{SechWedgeGridMaker} (the latter is
+  the edge-refining variant this session started building for the reduced domain) are templates
+  for the two cases respectively. \textbf{If you reuse ASB's own \sub{GridMakerHHL} with a domain
+  edge coinciding exactly with its hardcoded interior coalescence angle $\phi_{23}=\pi/6$, you
+  will hit the degenerate-segment bug this session found and fixed} (Section~\ref{sec:gotchas}) --
+  either use the fixed version (both repo copies were patched) or write your own domain-edge-aware
+  grid maker.
+\item Work out what boundary condition your problem's symmetry (particle exchange, parity) forces
+  at each domain edge, and pick \texttt{Left}/\texttt{Right} $\in\{0,1,2,3\}$ accordingly
+  (Section~\ref{sec:box1bc}'s table). \textbf{The physical BC is a statement about the true
+  wavefunction; whether it translates to a Dirichlet or Neumann code for the reduced function
+  $u=R^\alpha\Psi$ depends on your \texttt{AlphaFactor} choice} -- don't guess, work out the
+  small-$R$/domain-edge power-law behavior explicitly the way Section~\ref{sec:box1bc} does for
+  the 3-body case.
+\end{itemize}
+
+\subsection*{Step 3: Write a plugin}
+Copy \file{SechFunctionPlugins.f90} as a template. You need exactly three subroutines conforming
+to \file{AdiabaticInterfaces.f90}'s abstract interfaces:
+\begin{enumerate}
+\item A \sub{PotentialProc}: convert the passed angular quadrature points to your physical
+  coordinates, evaluate $V$ and $\partial V/\partial R$ (needed even if you only ever use
+  \texttt{CouplingFlag=0} downstream -- \sub{CalcHamiltonianGeneric} always computes \texttt{dPot}
+  internally, it's just unused when coupling isn't requested).
+\item A \sub{GridMakerProcI}: return the angular knot grid at a given $R$. If your potential has
+  coalescence-type features that sharpen with $R$, refine around them the way \sub{SechGridMaker}
+  narrows a fixed-width window as $\delta x=r_0/R$.
+\item A \sub{RobinCoeffProc}: return the sentinel \texttt{1d20} for both outputs unless you
+  genuinely have a Robin (contact-interaction-type) boundary condition, in which case return the
+  real physical log-derivative jump (see \sub{DeltaRobinCoeff} for the worked delta-function
+  example).
+\end{enumerate}
+\textbf{Validate the plugin in isolation before trusting it in the full pipeline.} This session's
+most productive debugging technique was writing small, throwaway standalone comparator programs
+that call the new plugin's \sub{PotentialProc}/\sub{GridMakerProcI} side by side with a trusted
+reference (either ASB's hardcoded \sub{OneDimChannels}, or the same plugin fed through two
+different code paths) at a handful of fixed $R$ values, and diffing to machine precision. This
+caught a dropped-square-root typo in a geometric prefactor that a full end-to-end run would only
+have manifested as ``somewhat wrong'' scattering results -- much harder to localize.
+
+\subsection*{Step 4: Choose an evaluation strategy}
+\begin{center}
+\let\texttt\ttb
+\begin{tabular}{@{}p{3cm}p{4.3cm}p{6.5cm}@{}}
+\toprule
+Strategy & When & Caveat \\
+\midrule
+Closed-form analytic (\file{DeltaFunctionPlugins.f90}-style) & Only if your potential admits one
+  (e.g. a contact/delta interaction, or another exactly solvable model) & Cheapest by far; no
+  ARPACK diagonalization needed at all. \\
+Tabulate + interpolate (\file{AdiabaticPotential.f90}) & Production runs over many energies/box
+  configurations where the same physics gets reused repeatedly & Cheap per query, but the
+  interpolant's domain is exactly \texttt{Rdata(1:NumDataPoints)} from whatever tabulation
+  generated it -- \textbf{the tabulation's own R-grid must have its first point below the
+  smallest $R$ any box's quadrature will ever query} (Section~\ref{sec:gotchas}), and a
+  \emph{uniform} tabulation grid will almost certainly under-resolve near-origin behavior for any
+  interesting few-body potential (steep excited-channel curves near $R\to0$) -- use a quadratic or
+  log-spaced tabulation grid. \\
+Direct, on-the-fly diagonalization (\file{SechAdiabaticPotentialDirect.f90}-style) & Diagnostic
+  runs, cross-checks, or any case where interpolation accuracy is in doubt & No domain-floor issue
+  at all (mirrors \file{DeltaScat}'s design), but $\sim$0.05\,s per quadrature point --
+  \textbf{cache per-box results explicitly and never re-evaluate per energy}
+  (Section~\ref{sec:directcost}). \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\subsection*{Step 5: Box representation}
+B-spline (\sub{MakeBasis}/\sub{CalcGamLam}) or SVD/DVR (\sub{BuildSVDBox(Generic)})? SVD boxes
+need far fewer radial points per box (a handful of DVR nodes vs. a dense B-spline mesh) at the
+cost of the channel-overlap-matrix bookkeeping and the \texttt{GridType} choice
+(Section~\ref{sec:box1bc}). If you're using the direct-evaluation strategy and a B-spline box,
+follow \file{RMATPROPAdiabaticDirect3Boson.f90}'s pattern exactly (Section~\ref{sec:directcost}
+below) or the cost will blow up.
+
+\subsection*{Step 6: Grid optimization}
+\begin{itemize}
+\item \textbf{Angular resolution} (\texttt{xNumPoints}/\texttt{LegPoints} for the angular
+  diagonalization): match or exceed whatever generated any reference/tabulated dataset you're
+  comparing against. This session found no measurable difference between $\phi$NumPoints=80 and
+  200 for a single-point curve check, but always used 200 (matching the original ASB
+  tabulation) for anything meant to be authoritative.
+\item \textbf{Radial box spacing} (\texttt{BoxSpacingPower}): linear (1.0, uniform box widths) or
+  quadratic (2.0, clusters boxes near \texttt{xStart}). Every driver in this codebase currently
+  hardcodes 1.0 despite several comments suggesting quadratic was considered -- worth revisiting
+  for a genuinely fast-varying near-origin potential.
+\item \textbf{Radial tabulation grid} (only relevant to the tabulate+interpolate strategy): as
+  above, quadratic-or-better spacing near $R_{\min}$, not uniform.
+\item \textbf{Box 1's own internal knot grid}: already quadratic-clustered toward \texttt{xl} via
+  \sub{GridMaker}(\ldots,\texttt{"quadratic"}) in every driver that has one -- this is independent
+  of \texttt{BoxSpacingPower} (which controls box \emph{boundaries} across the whole chain) and of
+  the tabulation grid (which controls the underlying dataset's resolution). \textbf{These are three
+  independent ``quadratic'' knobs} -- don't assume tuning one fixes a resolution problem actually
+  caused by another; this session's ``try a quadratic grid'' fix for the near-origin interpolation
+  problem specifically meant the \emph{tabulation} grid, and left the other two unchanged.
+\end{itemize}
+
+\subsection*{Step 7: Asymptotic matching / cross sections}
+\label{sec:asymptotics}
+\sub{CalcK} assumes your problem's asymptotic channel functions are hyperspherical-Bessel/
+Riccati-Bessel type (via \sub{hyperrjry} in \file{besselnew.f90}), parameterized purely by each
+channel's threshold energy and effective angular momentum \texttt{Leff}
+(\texttt{FitLeff.data}, produced by \file{NewFitProg.f}'s long-range fit of the tabulated $U_n(R)$
+tail to a $L(L+\text{EffDim}-2)/2\mu R^2$-type centrifugal form). \textbf{If your problem's
+long-range tail is not of this form} -- e.g. a genuine $1/R$ Coulomb tail between fragments, a
+dipole-dipole $1/R^3$ long-range interaction, or any other non-centrifugal asymptotic potential --
+\sub{CalcK}'s matching is \emph{not} directly applicable, and you will need either:
+\begin{itemize}
+\item A different long-range fit routine (analogous to \file{NewFitProg.f}, but fitting to
+  whatever functional form is actually correct for your tail), feeding \sub{CalcK} an
+  \texttt{Leff} that is only an \emph{effective} approximation valid where the true tail has
+  decayed to negligible strength by $x_{\text{End}}$ (i.e. push $x_{\text{End}}$ far enough that
+  the residual long-range coupling is negligible) -- viable if the true tail decays faster than
+  $1/R^2$; or
+\item A genuinely different final-matching routine using the correct asymptotic reference
+  functions for your tail (Coulomb wave functions instead of Riccati-Bessel, for instance) --
+  this would be new code, not a parameter change, and is the one place in this whole pipeline
+  where ``write a plugin'' isn't enough; \sub{CalcK} itself would need a problem-specific sibling.
+\end{itemize}
+Once you have a valid $K$-matrix, $S=(1-iK)^{-1}(1+iK)$ (already implemented inline in every
+driver's energy loop via \sub{CompSqrMatInv}), and cross sections follow from the standard
+multichannel formulas using \texttt{SD\%K}/\texttt{SD\%f}/\texttt{SD\%sigma}
+(\texttt{DataStructures}' \texttt{ScatData} type already has slots for these, though not every
+driver fills \texttt{f}/\texttt{sigma} -- check the specific driver).
+
+\textbf{Validate with unitarity before trusting any cross section.} Every driver in this pipeline
+computes $1-|S_{11}|^2$ (or the general $\Vert S^\dagger S-I\Vert_\infty$, in the SVD-generic
+family) as a running sanity check -- it must vanish (up to finite-channel-count/finite-$R_{\max}$
+truncation, which should shrink as you add channels or push $x_{\text{End}}$ out) for any
+correctly-implemented closed system. This is the fastest way to catch a wrong asymptotic-matching
+implementation before trusting any physical number that comes out of it.
+
+%============================================================
+\section{Cost Discipline for Direct (No-Interpolation) Potential Evaluation}
+\label{sec:directcost}
+%============================================================
+
+Every direct-evaluation call is a full ARPACK shift-invert diagonalization,
+$\sim$0.05\,s at 200-point angular resolution (measured this session, \file{SechCurvesSVD.x}: 400
+points in $\sim$20\,s wall time). This is fine for a one-time box construction
+($N_{\text{boxes}}\times(\texttt{xNumPoints}-1)\times\texttt{LegPoints}$ points total -- e.g.
+$\sim$9000 points, $\sim$7--8 minutes, for a 100-box/10-knot/10-Legendre-point B-spline chain) but
+\textbf{catastrophic if repeated per energy}. \file{RMATPROPAdiabatic.f90}'s tabulate+interpolate
+last-box handling rebuilds the potential fresh every energy (harmless there, since an interpolation
+lookup is cheap) -- \textbf{do not copy that pattern literally into a direct-evaluation driver.}
+\file{RMATPROPAdiabaticDirect3Boson.f90}'s fix: give the last box its own dedicated \texttt{BPD}
+(\texttt{BPDLast}), call \sub{SetAdiabaticPotentialDirect} on it exactly once outside the energy
+loop, and inside the loop only call \sub{CalcGamLam} again (cheap dense linear algebra on the
+already-computed \texttt{Pot}/\texttt{Pcoup} arrays, no re-diagonalization) to pick up that
+energy's \texttt{NumOpenR}.
+
+Two implementation bugs this session hit building this, worth remembering if you write another
+direct-evaluation provider:
+\begin{itemize}
+\item \textbf{Radial vs. angular \texttt{LegPoints} are different quantities.} The box's own radial
+  Gauss-Legendre quadrature (how many $R$ points per box sub-interval -- must match the driver's
+  global \texttt{LegPoints}/\texttt{xLeg} from the \texttt{Quadrature} module, already set up via
+  \sub{GetGaussFactors}) is unrelated to \sub{OneDimChannelsGeneric}'s own \texttt{LegPoints}
+  argument (angular integration resolution inside each diagonalization). Reusing one variable for
+  both is an easy, silent mistake.
+\item \textbf{Close a scratch file before reopening it for reading.} If you write to a unit inside
+  a called subroutine (e.g. \sub{OneDimChannelsGeneric} writing to \texttt{Pfile}/\texttt{Qfile})
+  and then \texttt{OPEN} that same unit number again in the caller without an intervening
+  \texttt{CLOSE}, the reopen does not rewind the file position -- subsequent reads start from
+  wherever writing left off (i.e. immediately hit end-of-file), even though the file's on-disk
+  content is completely correct. The error message (``End of file'' at the \emph{read} statement)
+  is easy to misdiagnose as a data-generation bug rather than a file-handling one.
+\end{itemize}
+Also be aware that ARPACK can converge fewer than the requested number of eigenvalues at a
+difficult $R$ (\texttt{nQ=MIN(NumStates,iparam(5))} $<$ \texttt{NumStates} in
+\sub{OneDimChannelsGeneric}); a consumer that assumes a fixed \texttt{NumStates}$\times$
+\texttt{NumStates} block per record in the $P$/$Q$ output files will break unless the writer pads
+short blocks with zero -- \file{AdiabaticSolverGeneric.f90} was patched this session to always
+zero-pad and write the full block, since this was the first code path in the workspace to ever
+round-trip that data through a fixed-width file format.
+
+%============================================================
+\section{Known Gotchas -- Quick Reference}
+\label{sec:gotchas}
+%============================================================
+
+\begin{enumerate}[leftmargin=*]
+\item \textbf{Literal $R=0$ is unusable for direct potential evaluation.} The hyperspherical
+  kinetic prefactor $m=-1/(2\mu R^2)$ is genuinely singular there (confirmed: crashes
+  LAPACK's \texttt{DLASCL} with an illegal-parameter error, and ARPACK's \texttt{\_saupd} with
+  \texttt{info=-9999}, the first time this was tried this session), and that single failure then
+  poisons \emph{every subsequent $R$} in the same run because \sub{OneDimChannels}/
+  \sub{OneDimChannelsGeneric} reuse residual/state arrays across the $R$-sweep without resetting.
+  Use a tiny nonzero \texttt{RMin} (e.g. \texttt{1d-6}) for any driver that tabulates/evaluates a
+  potential directly at explicit $R$ points -- this is a genuinely different situation from the
+  DVR mechanisms in Section~\ref{sec:box1bc}, which structurally never evaluate exactly at $a_1$
+  regardless of its value.
+\item \textbf{A dataset's own tabulation resolution near $R=0$ can silently be far too coarse.}
+  A uniform 400-point grid from $R_{\min}=10^{-6}$ to $R_{\max}=50$ gives $R_{\text{data}}(2)
+  \approx0.125$ -- a five-order-of-magnitude gap in $R$ (and up to ten orders of magnitude in
+  $U_n(R)$ for steep excited channels) with \emph{nothing} tabulated in between. Any interpolated
+  value queried inside that gap is meaningless. Use a quadratic (or finer) tabulation grid; even
+  then, verify by direct comparison against a no-interpolation reference before trusting results
+  that depend on near-origin resolution.
+\item \textbf{The interpolant's own domain floor is a hard constraint, not just an accuracy
+  concern.} \file{AdiabaticPotential.f90} builds \texttt{UInterp}/\texttt{PInterp}/\texttt{QInterp}
+  over \texttt{Rdata(1:NumDataPoints)} (this session changed this from
+  \texttt{Rdata(2:NumDataPoints)}, which dropped the first tabulated point unconditionally for a
+  reason -- Runge-ringing near a genuine Coulomb-type near-origin divergence -- that turned out to
+  be dataset-specific and, worse, already independently guarded by \texttt{RcutoffAnalytic} for the
+  \emph{only} channels it actually applies to). \textbf{Rule: \texttt{Rdata(1)} must lie in
+  $0<R<R_{\text{quad}}(1)$, where $R_{\text{quad}}(1)$ is the smallest $R$ any box's own
+  quadrature will ever query} -- work this out from your box-1 width and internal quadratic-grid
+  clustering (Section~\ref{sec:newproblem}, Step 6) before generating a dataset, not after hitting
+  a \sub{dbsval} domain-edge crash.
+\item \textbf{Don't infer ``genuinely Coulomb-divergent'' from $\texttt{Threshold}<0$ alone.}
+  \file{RMATPROPAdiabatic.f90}'s \texttt{CoulombC}/\texttt{gamma0} near-origin substitution is an
+  equal-mass delta-function-specific formula; a short-range-potential bound-pair channel (e.g. the
+  sech$^2$ well's dimer channel) also has negative threshold without needing (or tolerating) that
+  substitution. Gated behind an explicit \texttt{ApplyCoulombC} input flag (default off) rather
+  than inferred from the sign of \texttt{Threshold} -- keep it that way for any new dataset.
+\item \textbf{\texttt{GridRebuildEveryR} must be \texttt{.FALSE.} for SVD/DVR box construction.}
+  \sub{GenericSVDChannelBasis.f90}'s own header explains why: the channel-overlap-matrix trick
+  assumes every DVR node in a box shares one angular basis, anchored at the box's own rightmost
+  $R$. Passing \texttt{.TRUE.} silently corrupts the cross-node overlap without an error message
+  -- the symptom is plausible-looking but wrong physics (huge, inconsistent numbers), not a crash.
+  \texttt{.TRUE.} is correct for a plain curve dump (evaluating the potential independently at
+  each of many explicit $R$ values, no box-sharing assumption involved) but wrong for building an
+  actual box.
+\item \textbf{\sub{GridMakerHHL}'s 4-segment refinement scheme assumes the interior coalescence
+  angle $\phi_{23}=\pi/6$ is \emph{strictly interior} to the domain.} If a symmetry-reduced
+  domain's right edge coincides with $\phi_{23}$ exactly, the standard segment-3 degenerate-width
+  guard produces a \emph{reversed} (negative-width) segment instead of gracefully shrinking to
+  zero, corrupting the B-spline knot vector (non-monotonic) and crashing ARPACK/LAPACK downstream
+  with no direct clue pointing at the grid maker. Fixed this session in both repos' copies of
+  \file{adiabaticSolver1D.f90} with an explicit \texttt{xMax\ .le.\ phi23} special case (falls
+  back to a plain 2-segment coarse+refined-near-edge split); confirmed a no-op for the existing
+  validated wide-domain case.
+\item \textbf{The $\tilde Q$ sign/normalization convention.} This codebase's
+  \texttt{Qmat.dat}/\texttt{BPD\%Pot} convention is $\texttt{Pot}(m,n)=+\tilde Q_{mn}/(2\mu)+
+  \delta_{mn}U_m$ (verified directly: $2\mu U+\tilde Q-0.25/R^2$ is flat to $10^{-12}$ out to
+  $R=200$ for the validated delta-function dataset, while the opposite sign visibly drifts).
+  \sub{OneDimChannelsGeneric}'s own $Q=-P\cdot P$ (via \texttt{dgemm}) is exactly this $\tilde Q$
+  (not the ``full'' $Q=P^2+\partial_R P$ from the hyperspherical-Laplacian derivation) -- don't
+  ``fix'' this to match a different sign convention found elsewhere in the workspace (e.g.
+  \file{CABS.f90}/\texttt{VQmat.dat} uses an internally opposite convention from this repo's own).
+\item \textbf{\texttt{Left/Right} BC codes 0--3 are shared across at least three different physical
+  meanings depending on which axis you're describing}: the angular BC at a hyperangle domain edge
+  (Section~\ref{sec:newproblem}), the radial BC at a box's own inner/outer edge
+  (Section~\ref{sec:box1bc}), and (for the SVD family) which \texttt{GridType} a box uses. Keep
+  these straight when reading or writing a driver -- the same integer \texttt{2} means ``open,
+  both boundary functions retained'' in every context, but \emph{which} boundary and \emph{which}
+  physical condition it ends up encoding depends entirely on which of these three axes you're on.
+\end{enumerate}
+
+%============================================================
+\section{Validation Playbook}
+%============================================================
+
+No automated test suite exists for this codebase; validation is against known physics invariants
+and literature benchmarks. Techniques that proved effective this session, roughly in order of
+how often to reach for them:
+
+\begin{enumerate}
+\item \textbf{Unitarity first.} $1-|S_{11}|^2\to0$ (or the general $\Vert S^\dagger S-I\Vert$) is
+  free (already wired into every driver) and catches a wide class of bugs -- wrong asymptotic
+  matching, a sign error in the propagation, a genuinely singular linear-algebra step -- before
+  you even need a literature comparison.
+\item \textbf{Before/after regression via \texttt{git checkout}.} When changing a shared/core
+  file, capture a validated benchmark's output, \texttt{git checkout --} the file back to its
+  last-committed state, rerun, diff. Bit-for-bit (or machine-precision) identical output on an
+  \emph{already-validated} benchmark is strong evidence a change is a true no-op for existing
+  behavior, before trusting it on new physics.
+\item \textbf{Standalone A/B comparators.} A small throwaway program calling two code paths (e.g.
+  a new generic plugin vs. the hardcoded reference it's meant to replace) at the same handful of
+  $R$ values, diffing to machine precision, isolates a bug to a specific routine far faster than
+  running the whole pipeline and eyeballing whether the final answer ``looks about right.'' This
+  is how the dropped-square-root \texttt{RPair} typo was found this session -- it was invisible in
+  end-to-end scattering output (just ``somewhat wrong''), obvious once isolated to the raw
+  potential values.
+\item \textbf{Literature/exact-formula comparison} where available (Mehta-Shepard atom-dimer
+  $K$-matrix, Amaya-Tapia/Larsen/Popiel coupled-channel phase shifts, McGuire's exact
+  elastic-unitarity result) -- the gold standard, but only available for the handful of exactly
+  solvable benchmark systems (equal-mass delta-function, free particle).
+\item \textbf{Independent numerical cross-check between fundamentally different code paths} for the
+  \emph{same} physics -- tabulate+interpolate vs. direct diagonalization
+  (Section~\ref{sec:directcost}), or B-spline-box vs. SVD-box -- when no closed-form answer exists.
+  Genuinely independent only if the two paths don't share the actual evaluation code (two callers
+  of the same \sub{OneDimChannelsGeneric} engine, differing only in potential/grid, are
+  \emph{not} independent of each other in the way ``interpolated vs. exact'' or ``\file{DeltaScat}
+  vs. \file{R-matrix-prop}'s own engine'' are).
+\end{enumerate}
+
+\end{document}

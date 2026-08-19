@@ -1,0 +1,15 @@
+DataDir
+3bodydata_sech2_5ch_fine
+
+NumSVDBoxes  xStart  xEnd
+20           0.0d0   40.0d0
+
+Emin  Emax  NumEnergies
+-0.999d0 1.0d0 200
+linear
+
+LSVD
+20
+
+OrderPhi  xNumPointsPhi
+5         80

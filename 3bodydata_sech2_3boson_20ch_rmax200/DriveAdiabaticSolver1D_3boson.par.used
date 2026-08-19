@@ -1,0 +1,18 @@
+NumStates  CouplingFlag  (CouplingFlag=1: compute P/Q/VQ couplings; 0: curves only)
+20  1
+LegendreFile
+Legendre.dat
+LegPoints  (Gauss-Legendre points for phi quadrature)
+10
+Order  Left  Right  (B-spline order; BCs: 0=Dirichlet 1=Neumann 2=mixed)
+5  1  1
+m1  m2  m3  (masses; mu = sqrt(m1*m2*m3/(m1+m2+m3)))
+1.d0  1.d0  1.d0
+phiNumPoints  phiMin  phiMax  (phi knot count; range in radians -- fundamental domain [0,pi/6] for 3 identical bosons)
+200  0.d0  0.5235987755982988d0
+alpha  adShift  (potential overall scale; ARPACK shift)
+1.d0  -5.d0
+V2Depth  PotRange  (sech^2 well depth and length scale L)
+2.d0  1.0d0
+RSteps  RMin  RMax  (R grid: number of points and range)
+200    1.d-6  201.d0
