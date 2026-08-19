@@ -54,6 +54,9 @@ PROGRAM main
   READ(7,*) OrderPhi, xNumPointsPhi
   CLOSE(7)
 
+  ! Equal-mass 3-boson delta-function problem's exact hyperspherical channel functions:
+  ! channel 1 (atom-dimer, Threshold=-1) has Leff=1/2; excited (3-body-threshold, Threshold=0)
+  ! channels have Leff=6i-9 (Mehta, Esry & Greene, PRA 76, 022711 (2007)).
   ALLOCATE(Threshold(NumChannelsLoc),Leff(NumChannelsLoc))
   Threshold(1) = -1d0
   Leff(1) = 0.5d0
@@ -68,6 +71,8 @@ PROGRAM main
   ! NumBoxesIn=NumSVDBoxes -- no B-spline tail here (all-SVD, exactly the previously
   ! validated behavior); RunHybridSVDGeneric's tail arguments are OPTIONAL and simply
   ! omitted when NumBoxesIn==NumSVDBoxes.
+  ! DeltaZeroPotential: V=0 identically (the contact interaction enters only through
+  ! DeltaRobinCoeff's Robin BC, kRight=sqrt(2*mu)*R, not an ordinary potential term).
   CALL RunHybridSVDGeneric(NumChannelsLoc,DeltaMu,DeltaAlpha,DeltaDdim,Threshold,Leff, &
        NumSVDBoxes,NumSVDBoxes,xStartLoc,xEndLoc,BoxSpacingPower, &
        Emin,Emax,NumEnergies,EnergyGridType, &

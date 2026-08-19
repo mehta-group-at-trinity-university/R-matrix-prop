@@ -164,7 +164,12 @@ PROGRAM main
               BPD%ux(lx,kx,1:BPD%xDim) = BPD0%ux(lx,kx,1:BPD%xDim)/(BPD%xr-BPD%xl)
            ENDDO
         ENDDO
+        ! Fills Pot(m,n)=Qtilde_mn(R)/(2*mu)+delta_mn*U_m(R), Pcoup=P(R) at this box's own
+        ! quadrature points via a fresh ARPACK diagonalization at each R (OneDimChannelsGeneric),
+        ! not interpolation -- same target quantities as SetAdiabaticPotential, no tabulated data.
         CALL SetAdiabaticPotentialDirect(BPD,muLocal)
+        ! Gam0_ij=Int[B_i'B_j' - 2*mu*Pot*B_iB_j - alpha(alpha-D+2)/(2*mu*R^2)*B_iB_j]
+        ! R^(D-1-2alpha)dR (+ Pcoup coupling term); Overlap_ij=Int[B_iB_j]R^(D-1-2alpha)dR.
         CALL CalcGamLam(BPD,EIG,NumChannels,NumChannels)
         Gam0Boxes(:,:,iBox) = EIG%Gam0
         OverlapBoxes(:,:,iBox) = EIG%Overlap
@@ -265,10 +270,16 @@ PROGRAM main
         EIG%Gam0 = Gam0Box1
         EIG%Overlap = OverlapBox1
         EIG%Lam = LamBox1
+        ! Gam(E) = Gam0 + E*Overlap.
         CALL CombineGam(EIG,Energy)
         ALLOCATE(evalRed(Boxes(1)%betaMax),evecRed(Boxes(1)%betaMax,Boxes(1)%betaMax))
         ALLOCATE(LamooDiag(Boxes(1)%betaMax))
+        ! Schur-eliminates interior/closed DOF (Omega_oo=Gam_oo-Gam_oc*Gam_cc^-1*Gam_co), then
+        ! solves the small generalized eigenproblem Omega_oo*c=beta*Lam_oo*c on the boundary-
+        ! retained ("open") DOF -- evalRed=beta, evecRed=c.
         CALL PartitionAndEliminate(BPD1,EIG,Boxes(1)%NumOpenL,Boxes(1)%NumOpenR,evalRed,evecRed,LamooDiag)
+        ! Builds Z,Z'=-beta*Z and matches to the previous box via a generalized eigenvalue match
+        ! enforcing R-matrix/log-derivative continuity (Burke thesis Eqs. 3.13-3.14).
         CALL BoxMatch(Bnull, Boxes(1), BPD1, evalRed, evecRed, LamooDiag, EffDim, AlphaFactor)
         DEALLOCATE(evalRed,evecRed,LamooDiag)
      ENDIF
@@ -307,6 +318,8 @@ PROGRAM main
      ENDIF
      DEALLOCATE(evalRed,evecRed,LamooDiag)
 
+     ! Rmat(i,j)=sum_beta Zf(i,beta)Zf(j,beta)/bf(beta) at xEnd, matched to asymptotic
+     ! Riccati-Bessel-like reference functions s,c (order=Leff): K=(c+cp*Rmat)*(s+sp*Rmat)^-1.
      CALL CalcK(Boxes(NumBoxes),BPDLast,SD,reducedmass,EffDim,AlphaFactor,Energy,Threshold)
 
      IF (NumOpenChannels.EQ.NumChannels .AND. NumChannels.GT.1) THEN

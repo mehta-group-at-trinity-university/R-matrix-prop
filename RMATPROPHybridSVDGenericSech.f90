@@ -93,7 +93,8 @@ PROGRAM main
   ! .inp file to match that same .par's B-spline order.
   ! NumBoxesIn=NumSVDBoxes -- no B-spline tail here (all-SVD, exactly the previously
   ! validated behavior); RunHybridSVDGeneric's tail arguments are OPTIONAL and simply
-  ! omitted when NumBoxesIn==NumSVDBoxes.
+  ! omitted when NumBoxesIn==NumSVDBoxes. SechPotential itself sums three pairwise sech^2
+  ! wells, V(R,phi)=SechAlpha*sum_{pairs}V2body(r_pair), r_pair=RPair*R*|cos(phi-offset)|.
   CALL RunHybridSVDGeneric(NumChannelsLoc,muLoc,AlphaFactorLoc,EffDimLoc,Threshold,Leff, &
        NumSVDBoxes,NumSVDBoxes,xStartLoc,xEndLoc,BoxSpacingPower, &
        Emin,Emax,NumEnergies,EnergyGridType, &

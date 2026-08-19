@@ -109,6 +109,8 @@ PROGRAM main
   ALLOCATE(xLeg(LegPoints),wLeg(LegPoints))
   CALL GetGaussFactors(LegendreFile,LegPoints,xLeg,wLeg)
 
+  ! Builds B-spline interpolants for U_n(R) (diagonal), P_mn(R) (first-derivative coupling),
+  ! Qtilde_mn(R) (second-derivative coupling) from the tabulated Uad/Pmat/Qmat.dat.
   CALL ReadAdiabaticData(DataDir,NumChannels,NumDataPoints,muLocal,alpha,ddim, &
        Threshold,Leff,UInterp,PInterp,QInterp)
   reducedmass = muLocal
@@ -267,8 +269,12 @@ PROGRAM main
               BPD%ux(lx,kx,1:BPD%xDim) = BPD0%ux(lx,kx,1:BPD%xDim)/(BPD%xr-BPD%xl)
            ENDDO
         ENDDO
+        ! Fills Pot(m,n)=Qtilde_mn(R)/(2*mu)+delta_mn*U_m(R) and Pcoup=P(R) at this box's
+        ! quadrature points, from the interpolants ReadAdiabaticData built above.
         CALL SetAdiabaticPotential(BPD,muLocal,UInterp,PInterp,QInterp,CoulombC)
-        ! interior box-to-box boundary: all channels retained, always -- energy-independent
+        ! interior box-to-box boundary: all channels retained, always -- energy-independent.
+        ! Builds Gam0_ij=Int[B_i'B_j' - 2*mu*Pot*B_iB_j - alpha(alpha-D+2)/(2*mu*R^2)*B_iB_j]
+        ! R^(D-1-2alpha)dR (+ Pcoup coupling term) and Overlap_ij=Int[B_iB_j]R^(D-1-2alpha)dR.
         CALL CalcGamLam(BPD,EIG,NumChannels,NumChannels)
         Gam0Boxes(:,:,iBox) = EIG%Gam0
         OverlapBoxes(:,:,iBox) = EIG%Overlap
@@ -376,10 +382,18 @@ PROGRAM main
         EIG%Gam0 = Gam0Box1
         EIG%Overlap = OverlapBox1
         EIG%Lam = LamBox1
+        ! Gam(E) = Gam0 + E*Overlap -- the actual energy-dependent generalized-eigenvalue
+        ! matrix PartitionAndEliminate needs, from the energy-independent Gam0/Overlap above.
         CALL CombineGam(EIG,Energy)
         ALLOCATE(evalRed(Boxes(1)%betaMax),evecRed(Boxes(1)%betaMax,Boxes(1)%betaMax))
         ALLOCATE(LamooDiag(Boxes(1)%betaMax))
+        ! Schur-eliminates the interior/closed DOF (Omega_oo = Gam_oo - Gam_oc*Gam_cc^-1*Gam_co),
+        ! then solves the small generalized eigenproblem Omega_oo*c = beta*Lam_oo*c on the
+        ! boundary-retained ("open") DOF only -- evalRed=beta, evecRed=c.
         CALL PartitionAndEliminate(BPD1,EIG,Boxes(1)%NumOpenL,Boxes(1)%NumOpenR,evalRed,evecRed,LamooDiag)
+        ! Builds this box's normalized log-derivative amplitudes Z,Z'=-beta*Z and matches them
+        ! to the previous box (here: the trivial regularity start) via a generalized eigenvalue
+        ! match enforcing R-matrix/log-derivative continuity (Burke thesis Eqs. 3.13-3.14).
         CALL BoxMatch(Bnull, Boxes(1), BPD1, evalRed, evecRed, LamooDiag, EffDim, AlphaFactor)
         DEALLOCATE(evalRed,evecRed,LamooDiag)
      ELSE
@@ -457,6 +471,8 @@ PROGRAM main
      ! produced using BPD1 (regularity basis), so CalcK must be matched using BPD1's own
      ! xr, not BPD's (which would silently be 0, from BPD0's own [0,1] construction,
      ! feeding hyperrjry an x=k*0=0 argument and crashing bessjy).
+     ! Matches Rmat(i,j)=sum_beta Zf(i,beta)Zf(j,beta)/bf(beta) at xEnd to asymptotic
+     ! Riccati-Bessel-like reference functions s,c (order=Leff): K=(c+cp*Rmat)*(s+sp*Rmat)^-1.
      IF (NumBoxes.EQ.1) THEN
         CALL CalcK(Boxes(NumBoxes),BPD1,SD,reducedmass,EffDim,AlphaFactor,Energy,Threshold)
         CALL DeAllocateBPD(BPD1)  ! rebuilt fresh every energy in this branch -- see above

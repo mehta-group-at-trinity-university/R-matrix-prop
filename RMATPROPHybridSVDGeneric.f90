@@ -228,6 +228,10 @@ CONTAINS
             NOpL = NumChannels
          ENDIF
          NOpR = NumChannels
+         ! Diagonalizes the fixed-R angular Hamiltonian at each of L DVR nodes R_i in [a1,a2]
+         ! (ARPACK, via MyPotential), giving adiabatic eigenvalues eps_nu(R_i); Gam0=diag(eps_nu)
+         ! (+ kinetic coupling) and Overlap=O(R_i,R_j) (cross-node channel-overlap matrix) replace
+         ! CalcGamLam's Galerkin double integral entirely for this box.
          CALL BuildSVDBoxGeneric(a1,a2,LThis,NumChannels,Order1D,Left1D,Right1D, &
               xNumPoints1D,xMin1D,xMax1D,LegendreFile1D,LegPoints1D,Shift,datadir, &
               GridRebuildEveryR,MyPotential,MyGridMaker,MyRobinCoeff, &
@@ -297,7 +301,11 @@ CONTAINS
                    BPDTail%ux(lx,kx,1:BPDTail%xDim) = BPD0Tail%ux(lx,kx,1:BPDTail%xDim)/(BPDTail%xr-BPDTail%xl)
                 ENDDO
              ENDDO
+             ! Tail region switches to the tabulated/interpolated potential: Pot(m,n)=
+             ! Qtilde_mn(R)/(2*mu)+delta_mn*U_m(R), Pcoup=P(R) (same as RMATPROPAdiabatic.x).
              CALL SetAdiabaticPotential(BPDTail,reducedmass,UInterp,PInterp,QInterp,CoulombC)
+             ! Ordinary B-spline Galerkin Gam0/Overlap (same formula as the SVD box's Gam0/Overlap
+             ! above, just built by quadrature over B-spline basis functions instead of DVR nodes).
              CALL CalcGamLam(BPDTail,EIGTail,NumChannels,NumChannels)
              Gam0TailBoxes(:,:,iBox) = EIGTail%Gam0
              OverlapTailBoxes(:,:,iBox) = EIGTail%Overlap
@@ -360,6 +368,8 @@ CONTAINS
                ! Only possible when NumBoxesIn==NumSVDBoxes (no tail): this SVD box IS the
                ! terminal box, so its NumOpenR tracks NumOpenChannels(Energy) and the cached
                ! Lam (built with NumOpenR=NumChannels at setup time) isn't valid here.
+               ! Cheaply refills just Lam_nunu=wsq*a^(D-1-2alpha)*O(a,a) at the moving boundary
+               ! (a=a1 or a2) for the new NumOpenR, without repeating the ARPACK diagonalization.
                CALL RebuildSVDBoxLam(EIGSVD,ODiagLSVDBoxes(:,iBox),ODiagRSVDBoxes(:,iBox), &
                     wsq1SVDBoxes(iBox),wsqLSVDBoxes(iBox),BPDSVDBoxes(iBox)%xl,BPDSVDBoxes(iBox)%xr, &
                     NumChannels,BPDSVDBoxes(iBox)%xDim,Boxes(iBox)%NumOpenL,Boxes(iBox)%NumOpenR)
@@ -367,11 +377,19 @@ CONTAINS
                EIGSVD%Lam(1:MDim,1:MDim) = LamSVDBoxes(1:MDim,1:MDim,iBox)
             ENDIF
           END BLOCK
+          ! Gam(E) = Gam0 + E*Overlap.
           CALL CombineGam(EIGSVD,Energy)
           ALLOCATE(evalRed(Boxes(iBox)%betaMax),evecRed(Boxes(iBox)%betaMax,Boxes(iBox)%betaMax))
           ALLOCATE(LamooDiag(Boxes(iBox)%betaMax))
+          ! Schur-eliminates interior/closed DOF (Omega_oo=Gam_oo-Gam_oc*Gam_cc^-1*Gam_co), then
+          ! solves the small generalized eigenproblem Omega_oo*c=beta*Lam_oo*c on the retained
+          ! ("open") boundary DOF -- evalRed=beta, evecRed=c.
           CALL PartitionAndEliminate(BPDSVDBoxes(iBox),EIGSVD,Boxes(iBox)%NumOpenL,Boxes(iBox)%NumOpenR, &
                evalRed,evecRed,LamooDiag)
+          ! Builds Z,Z'=-beta*Z and matches this box's boundary amplitudes to the previous box's
+          ! via a generalized eigenvalue match enforcing R-matrix/log-derivative continuity
+          ! (Burke thesis Eqs. 3.13-3.14) -- basis-agnostic, so an SVD box chains into a B-spline
+          ! tail box (below) exactly the same way it chains into another SVD box.
           IF (iBox.EQ.1) THEN
              CALL BoxMatch(Bnull, Boxes(1), BPDSVDBoxes(1), evalRed, evecRed, LamooDiag, EffDim, AlphaFactor)
           ELSE
@@ -417,8 +435,11 @@ CONTAINS
           CALL BoxMatch(Boxes(iBox-1), Boxes(iBox), BPDTail, evalRed, evecRed, LamooDiag, EffDim, AlphaFactor)
           DEALLOCATE(evalRed,evecRed,LamooDiag)
 
+          ! Rmat(i,j)=sum_beta Zf(i,beta)Zf(j,beta)/bf(beta) at xEnd, matched to asymptotic
+          ! Riccati-Bessel-like reference functions s,c (order=Leff): K=(c+cp*Rmat)*(s+sp*Rmat)^-1.
           CALL CalcK(Boxes(NumBoxesIn),BPDTail,SD,reducedmass,EffDim,AlphaFactor,Energy,Threshold)
        ELSE
+          ! Same K=(c+cp*Rmat)*(s+sp*Rmat)^-1 matching, using the terminal SVD box's own Zf/bf.
           CALL CalcK(Boxes(NumBoxesIn),BPDSVDBoxes(NumSVDBoxes),SD,reducedmass,EffDim,AlphaFactor,Energy,Threshold)
        ENDIF
 

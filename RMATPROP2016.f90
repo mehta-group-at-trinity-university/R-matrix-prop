@@ -357,11 +357,21 @@ PROGRAM main
            BPD%ux(lx,kx,1:BPD%xDim) = BPD0%ux(lx,kx,1:BPD%xDim)/(BPD%xr-BPD%xl)
         ENDDO
      ENDDO
+     ! Multipole close-coupling potential: Pot(m,n)=sum_lam MCmat(m,n,lam)/(2*mu)*R^(-lam-1)
+     ! (+ delta_mn*[l(l+1)/(2*mu*R^2) - Z/R + Eth_m/(2*mu)] on the diagonal).
      CALL SetBalujaPotential(BPD)
+     ! Builds the full energy-dependent Gam=2*mu*(E-H) directly (this older driver predates the
+     ! Gam0+CombineGam energy-independent-caching split used by the newer drivers) and the
+     ! boundary Lam; Overlap_ij=Int[B_iB_j]R^(D-1-2alpha)dR.
      CALL CalcGamLam(BPD,EIG,Boxes(iBox)%NumOpenL,Boxes(iBox)%NumOpenR)
      ALLOCATE(evalRed(Boxes(iBox)%betaMax),evecRed(Boxes(iBox)%betaMax,Boxes(iBox)%betaMax))
      ALLOCATE(LamooDiag(Boxes(iBox)%betaMax))
+     ! Schur-eliminates interior/closed DOF (Omega_oo=Gam_oo-Gam_oc*Gam_cc^-1*Gam_co), then
+     ! solves the small generalized eigenproblem Omega_oo*c=beta*Lam_oo*c on the retained DOF.
      CALL PartitionAndEliminate(BPD,EIG,Boxes(iBox)%NumOpenL,Boxes(iBox)%NumOpenR,evalRed,evecRed,LamooDiag)
+     ! Builds Z,Z'=-beta*Z and matches to the previous box (box 1: to Bseed, a diagonalized
+     ! literature R-matrix at r=5, not a pure regularity start) via a generalized eigenvalue
+     ! match enforcing R-matrix/log-derivative continuity (Burke thesis Eqs. 3.13-3.14).
      IF (iBox.EQ.1) THEN
         CALL BoxMatch(Bseed, Boxes(iBox), BPD, evalRed, evecRed, LamooDiag, EffDim, AlphaFactor)
      ELSE
@@ -370,6 +380,8 @@ PROGRAM main
      DEALLOCATE(evalRed,evecRed,LamooDiag)
   ENDDO
 
+  ! Rmat(i,j)=sum_beta Zf(i,beta)Zf(j,beta)/bf(beta) at xEnd, matched to asymptotic
+  ! Riccati-Bessel-like reference functions s,c (order=lmom): K=(c+cp*Rmat)*(s+sp*Rmat)^-1.
   CALL CalcK(Boxes(NumRealBoxes),BPD,SD,reducedmass,EffDim,AlphaFactor,Energy,BalujaEth)
 
   WRITE(6,*)

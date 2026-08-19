@@ -92,6 +92,8 @@ PROGRAM main
   !    this driver's former hand-rolled Fit.data/FitLeff.data-only parsing now that a genuine
   !    B-spline tail needs the tabulated potential interpolants too. AlphaFactorDataset (the
   !    dataset's own alpha=0.5) is read but deliberately NOT used -- see this file's own header. ---
+  ! Builds B-spline interpolants for U_n(R), P_mn(R), Qtilde_mn(R) -- used only by the B-spline
+  ! tail region below (the SVD region gets its potential from SechPotential directly).
   CALL ReadAdiabaticData(DataDir,NumChannelsLoc,NumDataPointsLoc,muLoc,AlphaFactorDataset,EffDimLoc, &
        Threshold,Leff,UInterp,PInterp,QInterp)
   IF (AlphaFactorDataset.NE.0d0) THEN
@@ -119,6 +121,8 @@ PROGRAM main
   ! used to generate the tabulated baseline. GridRebuildEveryR=.FALSE. is required for SVD/DVR box
   ! construction regardless of SechGridMaker's own R-dependence (see RMATPROPHybridSVDGeneric.f90's
   ! GenericSVDChannelBasis.f90 gotcha) -- box construction anchors the angular basis once per box.
+  ! SechPotential sums three pairwise sech^2 wells, V(R,phi)=SechAlpha*sum_{pairs}V2body(r_pair),
+  ! r_pair=RPair*R*|cos(phi-offset)|.
   CALL RunHybridSVDGeneric(NumChannelsLoc,muLoc,AlphaFactorFixed,EffDimLoc,Threshold,Leff, &
        NumSVDBoxes,NumBoxesLoc,xStartLoc,xEndLoc,BoxSpacingPower, &
        Emin,Emax,NumEnergies,EnergyGridType, &
