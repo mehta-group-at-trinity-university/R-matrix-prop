@@ -24,32 +24,46 @@
 ! RMATPROPHybridSVDGenericDelta.f90, which already used AlphaFactor=0/Radau for its own (unrelated)
 ! reduced-coordinate reasons -- same mechanism, different reason here.
 !
-! NumChannels/mu/Threshold/Leff are read directly from DataDir's own Fit.data/masses.dat/
-! FitLeff.data (same files/format RMATPROPAdiabatic.x's ReadAdiabaticData uses), so this driver
-! stays in sync with whichever 3-boson dataset (5/10/20-channel) it's pointed at.
+! NumChannels/mu/Threshold/Leff/UInterp/PInterp/QInterp are read directly from DataDir via
+! AdiabaticPotential.f90's ReadAdiabaticData (the SAME routine RMATPROPAdiabatic.x itself uses),
+! so this driver stays in sync with whichever 3-boson dataset (5/10/20-channel) it's pointed at,
+! and gets a genuine tabulated-potential B-spline tail for free.
+!
+! GENUINE HYBRID: when NumBoxes (read from the .inp) exceeds NumSVDBoxes, boxes
+! NumSVDBoxes+1..NumBoxes are ordinary B-spline boxes reading the SAME tabulated Uad/Pmat/Qmat
+! RMATPROPAdiabatic.x uses for this dataset -- exactly RMATPROPHybridSVD.f90's original box
+! structure (SVD short range, B-spline tail beyond Rswitch), now built on the pluggable SVD
+! engine. Set NumBoxes=NumSVDBoxes (and leave the OrderTail/xNumPointsTail/LegPointsTail trailer
+! at any values, e.g. 0) for the previous all-SVD-to-xEnd behavior. Since the tail needs a real
+! Uad.dat/Pmat.dat/Qmat.dat extending out to xEnd, point DataDir at an "_rmax200"-style dataset
+! (fit/tabulated all the way to R~200) when using a tail that reaches that far -- the short-range
+! (R=40-50) datasets are fine for an all-SVD (no-tail) run but not for a genuine hybrid one.
 !****************************************************************************************************
 PROGRAM main
   USE GlobalVars
   USE RMATPROPHybridSVDGenericMod, ONLY: RunHybridSVDGeneric
   USE SechFunctionPlugins
+  USE AdiabaticPotential
   IMPLICIT NONE
   CHARACTER(LEN=64) :: DataDir
   CHARACTER(LEN=16) EnergyGridType
   CHARACTER*64 :: LegendreFile64
   CHARACTER*64 :: datadirLoc
-  INTEGER ios, NumChannelsLoc, NumDataPointsLoc, NumSVDBoxes, NumEnergies, LSVD, OrderPhi, xNumPointsPhi
-  INTEGER i, j
+  INTEGER ios, NumChannelsLoc, NumDataPointsLoc, NumSVDBoxes, NumBoxesLoc, NumEnergies
+  INTEGER LSVD, OrderPhi, xNumPointsPhi, OrderTail, xNumPointsTail, LegPointsTail
   DOUBLE PRECISION, PARAMETER :: BoxSpacingPower = 1.0d0
   DOUBLE PRECISION, PARAMETER :: AlphaFactorFixed = 0d0
-  DOUBLE PRECISION, ALLOCATABLE :: Threshold(:), Leff(:)
-  DOUBLE PRECISION :: xStartLoc, xEndLoc, Emin, Emax, muLoc, AlphaFactorDataset, EffDimLoc, dum
+  DOUBLE PRECISION, ALLOCATABLE :: Threshold(:), Leff(:), CoulombC(:)
+  TYPE(InterpolatingFunction), ALLOCATABLE :: UInterp(:)
+  TYPE(InterpolatingMatrix) :: PInterp, QInterp
+  DOUBLE PRECISION :: xStartLoc, xEndLoc, Emin, Emax, muLoc, AlphaFactorDataset, EffDimLoc
 
   OPEN(unit=7,file='RMATPROPHybridSVDGenericSech3Boson.inp',status='old')
   READ(7,*)
   READ(7,*) DataDir
   READ(7,*)
   READ(7,*)
-  READ(7,*) NumSVDBoxes, xStartLoc, xEndLoc
+  READ(7,*) NumSVDBoxes, NumBoxesLoc, xStartLoc, xEndLoc
   READ(7,*)
   READ(7,*)
   READ(7,*) Emin, Emax, NumEnergies
@@ -61,50 +75,37 @@ PROGRAM main
   READ(7,*)
   READ(7,*)
   READ(7,*) OrderPhi, xNumPointsPhi
+  ! Optional trailer: B-spline tail's own Order/xNumPoints/LegPoints (radial quadrature knobs,
+  ! same meaning as RMATPROPAdiabatic.x's own Order/xNumPoints/LegPoints -- NOT OrderPhi/
+  ! xNumPointsPhi above, which are the SVD region's angular resolution). Absent (older .inp,
+  ! or a no-tail run) defaults to 0, which is fine since RunHybridSVDGeneric never touches
+  ! these when NumBoxesLoc==NumSVDBoxes.
+  READ(7,*,IOSTAT=ios)
+  READ(7,*,IOSTAT=ios)
+  READ(7,*,IOSTAT=ios) OrderTail, xNumPointsTail, LegPointsTail
+  IF (ios.NE.0) THEN
+     OrderTail = 0; xNumPointsTail = 0; LegPointsTail = 0
+  ENDIF
   CLOSE(7)
 
-  !--- Fit.data header: NumChannels, NumDataPoints, alpha, ddim (AdiabaticPotential.f90's own
-  !    ReadAdiabaticData format). AlphaFactorDataset (the dataset's own alpha=0.5) is read but
-  !    deliberately NOT used -- see this file's own header. ---
-  OPEN(unit=21,file=TRIM(DataDir)//'/Fit.data',status='old')
-  READ(21,*) NumChannelsLoc, NumDataPointsLoc, AlphaFactorDataset, EffDimLoc
-  CLOSE(21)
+  !--- Fit.data/masses.dat/FitLeff.data/Uad.dat/Pmat.dat/Qmat.dat, all in one call -- replaces
+  !    this driver's former hand-rolled Fit.data/FitLeff.data-only parsing now that a genuine
+  !    B-spline tail needs the tabulated potential interpolants too. AlphaFactorDataset (the
+  !    dataset's own alpha=0.5) is read but deliberately NOT used -- see this file's own header. ---
+  CALL ReadAdiabaticData(DataDir,NumChannelsLoc,NumDataPointsLoc,muLoc,AlphaFactorDataset,EffDimLoc, &
+       Threshold,Leff,UInterp,PInterp,QInterp)
   IF (AlphaFactorDataset.NE.0d0) THEN
      WRITE(6,*) "NOTE: overriding dataset's own alpha=",AlphaFactorDataset," with AlphaFactor=0 -- ", &
           "see this file's own header / memory wavefn-reduction-term-bug."
   ENDIF
 
-  !--- masses.dat: comment line, then mu (hyperradial reduced mass) ---
-  OPEN(unit=22,file=TRIM(DataDir)//'/masses.dat',status='old')
-  READ(22,*)
-  READ(22,*) muLoc
-  CLOSE(22)
+  ! No near-origin Coulomb patch for this sech^2 dataset (see RMATPROPAdiabatic.f90's own
+  ! ApplyCoulombC gotcha -- a short-range bound-dimer channel's negative threshold does NOT mean
+  ! a genuine Coulomb-like -C/R divergence). SVD boxes never reach R=0 with that assumption
+  ! anyway, and the tail region only starts at Rswitch>0.
+  ALLOCATE(CoulombC(NumChannelsLoc))
+  CoulombC = 0d0
 
-  !--- FitLeff.data: 2 header lines + blank, then either the 5-column (j,Threshold,residual,Leff,
-  !    FitRangeMin) or 4-column (j,Threshold,Leff,FitRangeMin) format -- same dual-format fallback
-  !    as AdiabaticPotential.f90's ReadAdiabaticData (see that routine's own comment). ---
-  ALLOCATE(Threshold(NumChannelsLoc),Leff(NumChannelsLoc))
-  OPEN(unit=26,file=TRIM(DataDir)//'/FitLeff.data',status='old')
-  READ(26,*)
-  READ(26,*)
-  READ(26,*)
-  BLOCK
-    CHARACTER(LEN=200) :: fitLeffLine
-    DOUBLE PRECISION :: fitRangeMinDum
-    DO i = 1,NumChannelsLoc
-       READ(26,'(A)') fitLeffLine
-       READ(fitLeffLine,*,IOSTAT=ios) j, Threshold(i), dum, Leff(i), fitRangeMinDum
-       IF (ios.NE.0) THEN
-          READ(fitLeffLine,*,IOSTAT=ios) j, Threshold(i), Leff(i), fitRangeMinDum
-       ENDIF
-       IF (ios.NE.0) THEN
-          WRITE(6,*) "RMATPROPHybridSVDGenericSech3Boson: ",TRIM(DataDir)//"/FitLeff.data channel ",i, &
-               " matches neither the 5-column nor 4-column FitLeff.data format."
-          STOP
-       ENDIF
-    ENDDO
-  END BLOCK
-  CLOSE(26)
   ! FitLeff.data gives the raw threshold energy; CalcK's k(i)^2=2*mu*EE-Eth(i) formula expects
   ! Eth already pre-multiplied by 2*mu -- same rescaling RMATPROPAdiabatic.f90 applies.
   Threshold = 2d0*muLoc*Threshold
@@ -119,11 +120,12 @@ PROGRAM main
   ! construction regardless of SechGridMaker's own R-dependence (see RMATPROPHybridSVDGeneric.f90's
   ! GenericSVDChannelBasis.f90 gotcha) -- box construction anchors the angular basis once per box.
   CALL RunHybridSVDGeneric(NumChannelsLoc,muLoc,AlphaFactorFixed,EffDimLoc,Threshold,Leff, &
-       NumSVDBoxes,xStartLoc,xEndLoc,BoxSpacingPower, &
+       NumSVDBoxes,NumBoxesLoc,xStartLoc,xEndLoc,BoxSpacingPower, &
        Emin,Emax,NumEnergies,EnergyGridType, &
        LSVD,OrderPhi,1,1,xNumPointsPhi,0d0,dacos(-1d0)/6.0d0, &
        LegendreFile64,10,-5.0d0,.FALSE., &
        SechPotential,SechGridMaker,SechRobinCoeff,datadirLoc, &
-       'PhaseShiftSechSVD.dat','KMatrixFullSechSVD.dat','RecombinationSechSVD.dat','Radau')
+       'PhaseShiftSechSVD.dat','KMatrixFullSechSVD.dat','RecombinationSechSVD.dat','Radau', &
+       OrderTail,xNumPointsTail,LegPointsTail,UInterp,PInterp,QInterp,CoulombC)
 
 END PROGRAM main

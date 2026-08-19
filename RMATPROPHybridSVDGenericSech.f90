@@ -91,8 +91,11 @@ PROGRAM main
   ! DriveAdiabaticSolver1D_5ch.par exactly -- same angular BC used to generate the tabulated
   ! baseline this run is being compared against. OrderPhi should likewise be set to 5 in the
   ! .inp file to match that same .par's B-spline order.
+  ! NumBoxesIn=NumSVDBoxes -- no B-spline tail here (all-SVD, exactly the previously
+  ! validated behavior); RunHybridSVDGeneric's tail arguments are OPTIONAL and simply
+  ! omitted when NumBoxesIn==NumSVDBoxes.
   CALL RunHybridSVDGeneric(NumChannelsLoc,muLoc,AlphaFactorLoc,EffDimLoc,Threshold,Leff, &
-       NumSVDBoxes,xStartLoc,xEndLoc,BoxSpacingPower, &
+       NumSVDBoxes,NumSVDBoxes,xStartLoc,xEndLoc,BoxSpacingPower, &
        Emin,Emax,NumEnergies,EnergyGridType, &
        LSVD,OrderPhi,1,0,xNumPointsPhi,0d0,dacos(-1d0)/2.0d0, &
        LegendreFile64,10,-1.0d0,.FALSE., &

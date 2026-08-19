@@ -243,7 +243,7 @@ DeltaFunctionPlugins.o: DeltaFunctionPlugins.f90 RMatPropCore.o AdiabaticInterfa
 
 # Generic hybrid-SVD driver engine (RunHybridSVDGeneric), physics-agnostic -- see
 # RMATPROPHybridSVDGenericDelta.f90 for the delta-function plugin instantiation.
-RMATPROPHybridSVDGeneric.o: RMATPROPHybridSVDGeneric.f90 RMatPropCore.o AdiabaticInterfaces.o SVDChannelBasis.o GenericSVDChannelBasis.o
+RMATPROPHybridSVDGeneric.o: RMATPROPHybridSVDGeneric.f90 RMatPropCore.o AdiabaticInterfaces.o SVDChannelBasis.o GenericSVDChannelBasis.o AdiabaticPotential.o
 	${CMP} ${DEBUG} ${FORCEDP} ${CMPFLAGS} -c RMATPROPHybridSVDGeneric.f90
 
 HYBRIDSVDGENERICDELTA_OBJS = ${GENERICSVD_OBJS} DeltaFunctionPlugins.o RMATPROPHybridSVDGeneric.o RMATPROPHybridSVDGenericDelta.o
@@ -276,7 +276,7 @@ HYBRIDSVDGENERICSECH3BOSON_OBJS = ${GENERICSVD_OBJS} SechFunctionPlugins.o RMATP
 RMATPROPHybridSVDGenericSech3Boson.x: ${HYBRIDSVDGENERICSECH3BOSON_OBJS}
 	${CMP} ${DEBUG} ${HYBRIDSVDGENERICSECH3BOSON_OBJS} ${INCLUDE} ${ARPACK} ${LAPACK} ${CMPFLAGS} ${FORCEDP} -o RMATPROPHybridSVDGenericSech3Boson.x
 
-RMATPROPHybridSVDGenericSech3Boson.o: RMATPROPHybridSVDGenericSech3Boson.f90 RMatPropCore.o RMATPROPHybridSVDGeneric.o SechFunctionPlugins.o
+RMATPROPHybridSVDGenericSech3Boson.o: RMATPROPHybridSVDGenericSech3Boson.f90 RMatPropCore.o RMATPROPHybridSVDGeneric.o SechFunctionPlugins.o AdiabaticPotential.o
 	${CMP} ${DEBUG} ${FORCEDP} ${CMPFLAGS} -c RMATPROPHybridSVDGenericSech3Boson.f90
 
 # Standalone A/B comparator (Validation Playbook technique): single-channel, single-box R-matrix,
