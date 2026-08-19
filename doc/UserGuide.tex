@@ -471,6 +471,7 @@ This is the layer you replace or extend for a new Hamiltonian.
 \end{description}
 
 \subsection{Layer 3 -- Driver programs}
+\label{sec:layer3}
 
 {\let\texttt\ttb
 \begin{longtable}{@{}p{3.3cm}p{2cm}p{3cm}p{7cm}@{}}
@@ -508,6 +509,15 @@ This is the layer you replace or extend for a new Hamiltonian.
   exactly. \\
 \file{RMATPROPHybridSVDGenericSech.f90} & All-SVD & \file{SechFunctionPlugins.f90} & Thin driver
   for the (2-fermion+1-distinguishable) sech$^2$ case, domain $[0,\pi/2]$. \\
+\file{RMATPROPHybridSVDGenericSech3Boson.f90} & All-SVD & \file{SechFunctionPlugins.f90} & Thin
+  driver for the equal-mass \emph{3-identical-boson} sech$^2$ case, domain $[0,\pi/6]$,
+  \texttt{Left1D=Right1D=1} (Neumann-Neumann, even-parity BC at both edges --
+  \sub{SechGridMaker}'s own \texttt{xMax}$\,\le\,\phi_{23}$ branch already handles the domain's
+  right edge coinciding with the coalescence point). \texttt{NumChannels}/\texttt{mu}/
+  \texttt{Threshold}/\texttt{Leff} are read straight from \texttt{DataDir}'s own \texttt{Fit.data}/
+  \texttt{FitLeff.data}, so the same driver runs any \texttt{3bodydata\_sech2\_3boson*} dataset --
+  see the naming convention note below. Independent cross-check of \file{RMATPROPAdiabatic.x} on
+  the identical physics (Section~\ref{sec:leffconv}). \\
 \file{SVDBound.x} & Single DVR grid & Tabulated & Bound-state solver, one direct diagonalization,
   no box-chaining. \\
 \file{SVDRmat.x} & Single DVR grid & Tabulated & Wigner-Eisenbud-form R-matrix (pole sum), not the
@@ -516,8 +526,31 @@ This is the layer you replace or extend for a new Hamiltonian.
   deliberately avoids the modern box-1 machinery (2019-era recipe). \\
 \file{PlotWavefunction*.x} & (diagnostic) & n/a & Standalone single-energy/single-box wavefunction
   reconstructions, validated against independent RK45 integration. \\
+\file{PlotWavefunctionBoxByBox.f90} & (diagnostic) & n/a & Multi-box wavefunction reconstruction,
+  adiabatic B-spline chain and SVD chain side by side, using \emph{raw} \texttt{evecRed}/
+  \texttt{evalRed} (not \sub{BoxMatch}'s own unit-normalized \texttt{Zf}/\texttt{Zfp}) with a
+  value-\emph{and}-derivative box-interface match, correctly flipping the outward-normal sign of
+  the log-derivative at a box's \emph{left} edge only (Section~\ref{sec:leffconv}). \\
+\file{CompareRmatrixSVDvsAdiabatic.f90} / \file{CompareRmatrixMultichannel.f90} & (diagnostic) &
+  both paths, single box & A/B comparators isolating box \emph{construction} from \sub{BoxMatch}
+  chaining and \sub{CalcK}'s asymptotic matching: the former diffs the adiabatic-tabulated vs.
+  SVD-direct $R$-matrix/wavefunction at one box; the latter tests whether embedding a channel in a
+  larger \texttt{NumStates}-channel SVD construction changes its own $R$-matrix relative to
+  building it alone. \\
+\file{TestBoxCountRmat.f90} & (diagnostic) & SVD & Box-count-independence sanity check (1/2/3 boxes
+  spanning the same total range must agree to machine precision) -- isolates \sub{BoxMatch}
+  chaining correctness from the separate wavefunction-reconstruction-only issue above. \\
 \bottomrule
 \end{longtable}}
+
+\textbf{Dataset naming convention (\texttt{3bodydata\_sech2\_3boson*}):} a trailing
+\texttt{\_\{10,20\}ch} means \texttt{NumChannels} retained in that dataset's own long-range fit
+(default, unsuffixed, is 5); a trailing \texttt{\_rmax200} means \texttt{NewFitProg.f}'s long-range
+fit window was \texttt{Rdelay} units below $R{=}200$ (i.e. $R\in[191,201]$) instead of the default
+$R\in[40,50]$. Both axes matter independently for \texttt{FitLeff.data}'s \texttt{Leff} (see
+Section~\ref{sec:leffconv}) -- when comparing \file{RMATPROPAdiabatic.x} against
+\file{RMATPROPHybridSVDGenericSech3Boson.x} on the same physics, point both drivers at datasets
+matching on \emph{both} axes, or an apparent disagreement may just be inconsistent auxiliary data.
 
 \subsection{Layer 4 -- ASB: dataset generation for the tabulate+interpolate path}
 
@@ -789,6 +822,57 @@ truncation, which should shrink as you add channels or push $x_{\text{End}}$ out
 correctly-implemented closed system. This is the fastest way to catch a wrong asymptotic-matching
 implementation before trusting any physical number that comes out of it.
 
+\subsection{\texttt{Leff} must itself be basis-converged, not just the propagation}
+\label{sec:leffconv}
+
+A cross-check between \file{RMATPROPAdiabatic.x} (tabulated+interpolated) and
+\file{RMATPROPHybridSVDGenericSech3Boson.x} (all-SVD, direct) on the identical equal-mass
+3-identical-boson sech$^2$ physics initially showed the single-open-channel atom-dimer phase shift
+disagreeing by close to (but not exactly) $\pi$ across an entire energy scan, plus a residual
+$12$--$20^\circ$ after removing that offset. \textbf{Neither turned out to be a code bug.}
+
+\begin{itemize}
+\item \textbf{The $\approx\pi$ offset is expected and harmless.} \texttt{delta} is written
+  ``unwrapped, no anchor/offset applied'' -- each driver's phase-continuation starts from its own
+  first-computed $K$ value's principal $\arctan$ branch, which is arbitrary. Two independent
+  implementations have no reason to agree to better than $n\pi$; this is not evidence of a bug by
+  itself.
+\item \textbf{The residual traced to \texttt{Leff(1)} disagreeing between independently-fit
+  datasets.} \sub{hyperrjry}'s reference-function order is \emph{exactly}
+  \texttt{halfd+Leff(mch)-1} (i.e. \texttt{Leff(mch)} itself, for \texttt{EffDim=2}), so any
+  mismatch in \texttt{FitLeff.data}'s fitted \texttt{Leff} directly shifts \sub{CalcK}'s asymptotic
+  phase reference by $\approx-\Delta\nu\,\pi/2$ (leading-order Bessel-phase asymptotics) --
+  quantitatively consistent with the observed residual. Two datasets fit over different $R$ windows
+  disagreed (\texttt{Leff(1)}$=0.5106$ over $R\in[40,50]$ vs.\ $0.6443$ over $R\in[191,201]$);
+  overriding one to match the other collapsed the $\pi$-branch ambiguity to exactly $0$ and the
+  residual to $\sim1^\circ$.
+\item \textbf{\texttt{Leff} itself is not converged with too few retained channels.} Even at the
+  \emph{same} $R\in[191,201]$ fit window, the 5-channel and 20-channel datasets disagree
+  ($0.6443$ vs.\ $0.7418$) -- the long-range tail \texttt{NewFitProg.f} fits depends on how complete
+  the angular basis was when the underlying $U_n(R)$/$Q_{mn}(R)$ curves were generated, not just on
+  the fit window. Rerunning both drivers at 20 retained channels (on a dataset matched on
+  \emph{both} axes, Section~\ref{sec:layer3} above) brought the branch offset to exactly $0$ and
+  the residual to sub-degree agreement across the whole scan.
+\end{itemize}
+
+\textbf{Takeaway for validation work:} before attributing an SVD-vs-adiabatic (or any two-code-path)
+disagreement in a derived quantity like a phase shift to a real bug, check whether the two paths are
+actually consuming \emph{consistent} auxiliary data (\texttt{Threshold}/\texttt{Leff}), not just
+running the same nominal physics -- and remember that \texttt{Leff} converges with channel count
+independently of how well-converged the propagation/matching itself is.
+
+\textbf{A related, narrower conditioning pitfall}, hit while isolating the above: comparing raw
+$R$-matrices ($\texttt{Rmat}=Z_f^2/b_f$, $b_f=-Z_f'/Z_f$) directly at a single box edge is unreliable
+near an accidental zero of $b_f$ (a wavefunction turning point) -- a $\sim$1--3\% representation
+difference between two otherwise-correct code paths gets divided by a near-zero $b_f$ and amplified
+into an $O(1)$ (even opposite-sign) $R$-matrix discrepancy, even though the wavefunction \emph{shape}
+agrees well. Diagnosed by shifting the comparison radius by a quarter wavelength
+$\pi/(2k)$ of the relevant channel's asymptotic oscillation ($k=\sqrt{2\mu E-\text{Threshold}}$) --
+this moves $b_f$ away from zero and the discrepancy shrinks in proportion, confirming a conditioning
+artifact rather than a bug. Prefer comparing the branch-continued phase shift ($\arctan K$,
+unwrapped) over raw $K$ or raw \texttt{Rmat} for exactly this reason -- both have poles/zeros that a
+phase-shift comparison sidesteps.
+
 %============================================================
 \section{Cost Discipline for Direct (No-Interpolation) Potential Evaluation}
 \label{sec:directcost}
@@ -905,6 +989,20 @@ round-trip that data through a fixed-width file format.
   these straight when reading or writing a driver -- the same integer \texttt{2} means ``open,
   both boundary functions retained'' in every context, but \emph{which} boundary and \emph{which}
   physical condition it ends up encoding depends entirely on which of these three axes you're on.
+\item \textbf{\texttt{FitLeff.data} has two live formats and a naive fixed-column read silently
+  misreads \texttt{Leff}.} The legacy format is 5 columns
+  (\texttt{j,Threshold,residual,Leff,FitRangeMin}); current \file{NewFitProg.f} output drops the
+  always-zero \texttt{residual} placeholder, giving 4 columns
+  (\texttt{j,Threshold,Leff,FitRangeMin}). A plain list-directed \texttt{READ} written for one
+  format against a file in the other silently shifts every field left by one -- no read error, but
+  \texttt{Leff} ends up holding \texttt{FitRangeMin} (or the residual placeholder) instead, quietly
+  corrupting \sub{CalcK}'s asymptotic matching (confirmed to have happened, more than once, with
+  the \texttt{3bodydata\_sech2\_3boson} dataset). \file{AdiabaticPotential.f90}'s
+  \sub{ReadAdiabaticData} and \file{RMATPROPHybridSVDGenericSech3Boson.f90} both guard against this
+  by reading each line into a string buffer and trying the 5-column parse first (an internal
+  \texttt{READ}, so a short 4-column line reliably fails with nonzero \texttt{IOSTAT} instead of
+  spilling into the next record), falling back to the 4-column parse on failure. Copy this pattern
+  in any new code that reads \texttt{FitLeff.data} directly.
 \end{enumerate}
 
 %============================================================
@@ -943,6 +1041,20 @@ how often to reach for them:
   of the same \sub{OneDimChannelsGeneric} engine, differing only in potential/grid, are
   \emph{not} independent of each other in the way ``interpolated vs. exact'' or ``\file{DeltaScat}
   vs. \file{R-matrix-prop}'s own engine'' are).
+\item \textbf{Before trusting a two-code-path disagreement, check the auxiliary data matches, not
+  just the nominal physics.} Two drivers reading independently-generated datasets for ``the same''
+  system can disagree in \texttt{Threshold}/\texttt{Leff} even when both are individually valid
+  (Section~\ref{sec:leffconv}) -- confirm this isn't the whole story (e.g. by temporarily forcing
+  one driver to use the other's values) before spending time hunting for a code bug that isn't
+  there.
+\item \textbf{Compare the branch-continued phase shift ($\arctan K$, unwrapped), not raw $K$ or a
+  raw $R$-matrix, when validating against another code path.} Both $K=\tan\delta$ and
+  $\text{Rmat}=Z_f^2/b_f$ have a genuine pole/zero structure in $\delta$/$b_f$ that a small,
+  otherwise-unremarkable representation difference between two correct implementations can land
+  squarely on, producing an $O(1)$ or even opposite-sign discrepancy that looks like a bug but
+  isn't (Section~\ref{sec:leffconv}). If a raw-$K$/raw-Rmat discrepancy shrinks when the comparison
+  radius is shifted by a fraction of the relevant channel's asymptotic wavelength, it was a
+  conditioning artifact, not a bug.
 \end{enumerate}
 
 \end{document}
