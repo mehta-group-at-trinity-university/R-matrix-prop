@@ -132,6 +132,27 @@ externally by `Adiabatic-Scattering-BoundStates`'s adiabatic solvers:
   cross-R overlap needs a cross-basis Gram `int u_i^(Ra) u_j^(Rb)`, obtainable only by pointwise
   real-space evaluation (what `RobinSVDChannelBasis.f90` does). This is what makes
   `RMATPROPHybridSVDGenericDelta.x` unusable for the delta benchmark.
+  **Two possible fixes, both requiring a departure from the shared pipeline (not yet attempted):**
+  1. *Direct angular quadrature.* Build `O` by integrating
+     `<Phi_nu(R_i)|Phi_mu(R_j)>` in the angular coordinate with Gauss-Legendre quadrature over
+     real-space channel-function values, instead of the coefficient-space sandwich
+     `Phi^T S Phi`. This is what `RobinSVDChannelBasis.f90` already does, and it is correct for
+     any basis, R-dependent or not. Costs an angular quadrature per DVR-node pair.
+  2. *Closed-form cross-basis correction — cheaper, and exact.* Only ONE basis function depends
+     on R: for `Right=3`, `CalcBasisFuncsBP` builds
+     `u_last^(R) = B_{N+O-2}/constRight(R) + B_{N+O-1}`, and every other basis function is a
+     plain (R-independent) B-spline. So the true cross-basis Gram
+     `S^(a,b)_ij = int u_i^(Ra) u_j^(Rb)` differs from the shared `S` *only in the last row and
+     column*, and follows in closed form from the fixed plain-B-spline Gram `G` (computed once)
+     plus `constRight` at the two nodes:
+     `S^(a,b)_{i,last} = G_{i,N+O-2}/c_b + G_{i,N+O-1}`,
+     `S^(a,b)_{last,j} = G_{N+O-2,j}/c_a + G_{N+O-1,j}`,
+     `S^(a,b)_{last,last} = G_{N+O-2,N+O-2}/(c_a c_b) + G_{N+O-2,N+O-1}/c_a
+     + G_{N+O-1,N+O-2}/c_b + G_{N+O-1,N+O-1}`.
+     That turns the whole defect into a rank-2 correction of an already-computed matrix, at the
+     cost of returning `constRight(R)` (or `S` itself) per node from `OneDimChannelsGeneric`
+     rather than only at the last node.
+
 - **`OneDimChannelsGeneric`'s `FixPhase` only chains phases WITHIN one call.** Callers that drive an
   R-matrix box chain invoke it once per box, so without help each box inherits whatever arbitrary
   sign ARPACK returned at its own first R — an eigenvector-gauge jump at every box boundary, exactly

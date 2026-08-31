@@ -4,3 +4,16 @@
 *.o
 *.mod
 *.x
+
+# Run outputs and scratch, TOP LEVEL ONLY.  The leading slash matters: the
+# 3bodydata_*/ dataset directories are tracked data and their own .dat files must
+# NOT be ignored -- committing datasets is the convention in this repo.
+/*.dat
+/*.log
+/*.scratch
+/fort.*
+/*.inp.bak
+/*.bak
+
+# macOS
+.DS_Store
