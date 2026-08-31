@@ -88,6 +88,9 @@ built differs between drivers. Key pieces, roughly in the order a driver calls t
 | `RMATPROPHybridSVD.x` | Box 1..`NumSVDBoxes`: SVD/DVR boxes via `SVDChannelBasis.f90` (interfacing `adiabaticSolver1D.f90`'s `OneDimChannels`); remaining boxes: same B-spline basis as `RMATPROPAdiabatic.x` | `Rswitch` between the two basis types falls out of the uniform box-edge spacing formula. |
 | `RMATPROPHybridSVDAnalytic.x` | Every box SVD, built by `AnalyticSVDChannelBasis.f90`'s `BuildSVDBoxAnalytic` — per-R channel data (`Uad`, cross-R overlap) from `KMSFormulas.f`'s closed-form `SolveQ`/`EvalU`/`EvalOverlapAt` | Zero-basis-error benchmark driver for the equal-mass three-boson delta-function problem (Mehta, Esry & Greene, PRA 76, 022711 (2007)); physics hardcoded, no `Fit.data`/`FitLeff.data`. Not part of `all`. |
 | `RMATPROPHybridSVDRobin.x` | Every box SVD, built by `RobinSVDChannelBasis.f90`'s `BuildSVDBoxRobin` — per-R channel data from a genuine numerical diagonalization (`CalcBasisFuncsBP`'s Robin/`Left=1,Right=3` BC, fed the exact delta-function log-derivative `sqrt(2*mu)*R` at `phi=pi/6`) | Same benchmark as above but exercising the SVD machinery's generic (non-closed-form) numerical path. See "Delta-function SVD-box benchmark" below — two real bugs were found and fixed building this. Not part of `all`. |
+| `RMATPROPHybridSVDGenericDelta.x` | Every box SVD via `GenericSVDChannelBasis.f90`'s `BuildSVDBoxGeneric`, driven by `DeltaFunctionPlugins.f90` through `lib/AdiabaticSolverGeneric.f90`'s `OneDimChannelsGeneric` | **BROKEN for this problem — 8.822 rad off the exact result, do not use.** The generic pipeline sandwiches ONE overlap matrix (`S_out`, captured at the box's last radial node) for every cross-R pair, which is only valid when the angular basis is R-independent. The `Right=3` Robin BC (`kRight=sqrt(2*mu)*R`) rebuilds the basis at every R, so `O`'s same-R block is off the identity by up to 3.3e-2. Not fixable here — see the driver's own header banner. Unrelated to the gauge bug below, which is fixed. |
+| `RMATPROPHybridSVDGenericSech.x` / `RMATPROPHybridSVDGenericSech3Boson.x` | Same generic SVD pipeline via `SechFunctionPlugins.f90`; the `3Boson` variant supports a B-spline tail beyond `NumSVDBoxes` | `Left=1,Right=1` and a fixed grid, so the basis never varies with R and the shared-`S_out` trick above is EXACT — these are unaffected by that defect. |
+| `RMATPROPAdiabaticDirectDelta.x` / `RMATPROPAdiabaticDirect3Boson.x` | Ordinary B-spline boxes (`RMatPropCore`), but `Uad`/`P`/`Q` computed directly at every radial quadrature point via `OneDimChannelsGeneric` — no interpolation, no `DataDir` for the delta variant | Needs no cross-R overlap matrix, so it sidesteps the defect above entirely. Delta variant reaches ~7.9e-3 rad, the 5-channel floor. Boxes MUST be built in ascending-R order (phase chaining) — see the note at each build site. |
 | `SVDBound.x` | Single Gauss-Lobatto DVR grid, Dirichlet-Dirichlet | Bound-state solver — one direct diagonalization, no R-matrix box-chaining at all. |
 | `SVDRmat.x` | Same T+V construction as `SVDBound.x` | Wigner-Eisenbud-form single-box R-matrix: one energy-independent diagonalization, then `R(E)` from the pole sum — deliberately *not* the log-derivative/`PartitionAndEliminate`/`BoxMatch` eigenchannel approach used elsewhere in this repo. |
 | `BSplineFree.x` | Single free-particle (`V=0`) box, 2019-era box-1 recipe | Sanity check against the exact free-particle solution; explicitly avoids the newer `BuildBox1CombinedBasis`/`CalcGamLamBox1` machinery. |
@@ -107,6 +110,27 @@ externally by `Adiabatic-Scattering-BoundStates`'s adiabatic solvers:
 
 ## Known gotchas
 
+- **The generic SVD pipeline's shared overlap matrix is only valid for an R-INDEPENDENT angular
+  basis.** `GenericSVDChannelBasis.f90` builds a box's cross-R channel-overlap `O` by sandwiching a
+  single `S_out`, and `lib/AdiabaticSolverGeneric.f90` assigns `S_out = S` only *after* its R loop —
+  so it is the overlap at the box's **last** radial node. With `Left/Right` in `{0,1,2}` the basis
+  never changes with R and this is exact. With a Robin BC (`Left/Right = 3`) whose coefficient
+  depends on R — the delta-function problem's `kRight = sqrt(2*mu)*R` — `CalcBasisFuncsBP` is
+  rebuilt at every R, and the trick silently breaks: `O`'s same-R block, which must be the identity
+  at every node, is off by up to 3.3e-2 on the diagonal at the far end of a box, decaying linearly
+  toward the node where `S` was captured. Returning `S` per R would not fix it either — the correct
+  cross-R overlap needs a cross-basis Gram `int u_i^(Ra) u_j^(Rb)`, obtainable only by pointwise
+  real-space evaluation (what `RobinSVDChannelBasis.f90` does). This is what makes
+  `RMATPROPHybridSVDGenericDelta.x` unusable for the delta benchmark.
+- **`OneDimChannelsGeneric`'s `FixPhase` only chains phases WITHIN one call.** Callers that drive an
+  R-matrix box chain invoke it once per box, so without help each box inherits whatever arbitrary
+  sign ARPACK returned at its own first R — an eigenvector-gauge jump at every box boundary, exactly
+  where `BoxMatch` matches amplitudes assuming a shared channel basis. A gauge held constant over the
+  whole domain is unobservable; one that jumps per box is not. Fixed by threading `PhaseSeed` between
+  calls, which **requires callers to build boxes in ascending-R order** — the ordinary-box drivers
+  previously built `2..N-1, then 1, then N` (a caching grouping, harmless while
+  `SetAdiabaticPotential` was stateless) and had to be reordered. Symptom to recognize: per-box data
+  correct in isolation, but the answer degrading non-monotonically under refinement.
 - **`Threshold(i) < 0` is treated as "genuine Coulomb-diverging bound-pair channel"** in
   `RMATPROPAdiabatic.f90`'s `CoulombC` setup (and mirrored in `RMATPROPHybridSVD.f90`), using an
   equal-mass delta-function-specific `gamma0` formula (Mehta, Esry & Greene, PRA 76, 022711

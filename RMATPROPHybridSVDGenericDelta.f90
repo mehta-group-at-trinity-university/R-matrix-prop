@@ -1,4 +1,40 @@
 !****************************************************************************************************
+! *** BROKEN FOR THIS PROBLEM -- DO NOT USE FOR THE DELTA-FUNCTION BENCHMARK. ***
+!
+! Off by 8.822 rad against the exact Mehta-Shepard result (max|delta-delta_exact|; mod-pi it is
+! ~1.57 = pi/2 at EVERY q, i.e. no agreement anywhere).  This is NOT the per-box eigenvector-gauge
+! bug -- that one is fixed, and fixing it moved this driver by nothing (8.8 -> 8.822 rad).
+!
+! CAUSE: GenericSVDChannelBasis builds a box's cross-R channel-overlap matrix O by sandwiching a
+! SINGLE overlap matrix S_out (dsbmv/ddot), but OneDimChannelsGeneric only ever assigns
+! S_out = S AFTER its R loop, so S_out is the overlap at the box's LAST radial node.  That is
+! exact when the angular basis is R-independent -- and it is NOT here: the Right=3 Robin condition
+! carries kRight=sqrt(2*mu)*R, so CalcBasisFuncsBP is rebuilt at EVERY R and the BC-adapted last
+! basis function u_last = B_{N+O-2}/constRight(R) + B_{N+O-1} genuinely differs from node to node.
+!
+! MEASURED: O's same-R block must be the identity at every node; with the shared S_out its
+! diagonal is off by up to 3.3e-2 (box [95,100], far node), decaying linearly to 4.3e-3 at the
+! node nearest where S was captured.  So the channel functions are mis-normalized by ~3% in a
+! systematic, node-dependent way, and that metric error feeds straight into Gam0/Overlap.
+! (A raw ||S(R)-S(R_last)||/||S|| looks like only ~4e-3, but that norm is diluted by the ~22 bulk
+! B-spline entries that do not change at all -- ALL of the R-dependence sits in the single
+! Robin-adapted last function, which is exactly the one carrying the contact interaction.)
+!
+! NOT FIXABLE within this pipeline's shape.  Returning S at every R would still be wrong: the
+! correct cross-R overlap <Phi_nu(Ra)|Phi_mu(Rb)> needs a CROSS-basis Gram int u_i^(Ra) u_j^(Rb),
+! which is not S at either R.  It needs pointwise real-space evaluation of the channel functions
+! -- the approach RobinSVDChannelBasis.f90 takes, and which GenericSVDChannelBasis's own header
+! already names as the alternative when its shared-S precondition is violated.
+!
+! SCOPE: this is a property of using the generic SVD pipeline with an R-DEPENDENT boundary
+! condition, not a defect in that pipeline.  For Left/Right in {0,1,2} the basis never changes
+! with R, S is genuinely constant, and the shared-S_out trick is EXACT -- so
+! RMATPROPHybridSVDGenericSech3Boson.x (Left=1, Right=1, fixed grid) is unaffected.
+!
+! Use RMATPROPHybridSVDRobin.x (pointwise, same physics, ~8e-3 rad) or
+! RMATPROPAdiabaticDirectDelta.x (ordinary B-spline boxes, ~7.9e-3 rad) for this benchmark.
+!****************************************************************************************************
+!****************************************************************************************************
 ! Regression test for RMATPROPHybridSVDGeneric.f90's RunHybridSVDGeneric: a thin driver, reusing
 ! the SAME physics/plugins as RMATPROPHybridSVDRobin.f90 (equal-mass three-boson delta-function
 ! problem, DeltaFunctionPlugins.f90's DeltaZeroPotential/DeltaWedgeGridMaker/DeltaRobinCoeff), but
