@@ -337,6 +337,15 @@ DeltaAdiabaticPotentialDirect.o: DeltaAdiabaticPotentialDirect.f90 RMatPropCore.
 
 RMATPROPADIABATICDIRECTDELTA_OBJS = besselnew.o Bsplines.o matrix_stuff.o Quadrature.o Interpolation.o Potential.o adiabaticSolver1D.o RMatPropCore.o AdiabaticInterfaces.o AdiabaticSolverGeneric.o DeltaFunctionPlugins.o DeltaAdiabaticPotentialDirect.o RMATPROPAdiabaticDirectDelta.o
 
+# Exact Mehta-Shepard atom-dimer K-matrix comparator: reads PhaseShift.dat, writes
+# MehtaShepardExact.dat with the numerical and exact K/delta side by side.  Standalone (no module
+# dependencies).  Deliberately a real make target even though it is not part of `all`: it was
+# previously built by hand, so `make clean` silently orphaned it and every subsequent comparison
+# then re-read a STALE MehtaShepardExact.dat while appearing to succeed -- the failure is invisible
+# because the driver run itself is fine and only the comparator is missing.
+MehtaShepardExact.x: MehtaShepardExact.f90
+	${CMP} ${DEBUG} ${FORCEDP} ${CMPFLAGS} MehtaShepardExact.f90 -o MehtaShepardExact.x
+
 RMATPROPAdiabaticDirectDelta.x: ${RMATPROPADIABATICDIRECTDELTA_OBJS}
 	${CMP} ${DEBUG} ${RMATPROPADIABATICDIRECTDELTA_OBJS} ${INCLUDE} ${ARPACK} ${LAPACK} ${CMPFLAGS} ${FORCEDP} -o RMATPROPAdiabaticDirectDelta.x
 
