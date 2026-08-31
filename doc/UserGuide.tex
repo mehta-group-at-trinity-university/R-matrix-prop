@@ -528,13 +528,17 @@ This is the layer you replace or extend for a new Hamiltonian.
   \file{SVDChannelBasis.f90}'s own hardcoded \sub{OneDimChannels} call & \textbf{Superseded} by
   the generic pipeline below; kept buildable but not the recommended starting point. \\
 \file{RMATPROPHybridSVDGeneric.f90} (module \texttt{RMATPROPHybridSVDGenericMod}, subroutine
-  \sub{RunHybridSVDGeneric}) & All-SVD & Pluggable (\texttt{MyPotential}/\texttt{MyGridMaker}/
+  \sub{RunHybridSVDGeneric}) & SVD $+$ B-spline tail & Pluggable (\texttt{MyPotential}/\texttt{MyGridMaker}/
   \texttt{MyRobinCoeff}) & \textbf{Not a \texttt{PROGRAM}} -- a reusable subroutine (Fortran
   \texttt{PROGRAM}s can't take procedure arguments), called by a thin per-physics driver. Takes
   \texttt{Box1GridType} (\texttt{'Radau'} or \texttt{'LobattoDirichlet'} --
   see Section~\ref{sec:box1bc}). Already wires up the general multichannel unitarity check
-  ($\Vert S^\dagger S-I\Vert_\infty$), written to \texttt{Recombination.dat}. \\
-\file{RMATPROPHybridSVDGenericDelta.f90} & All-SVD & \file{DeltaFunctionPlugins.f90} & Thin driver
+  ($\Vert S^\dagger S-I\Vert_\infty$), written to \texttt{Recombination.dat}.
+  \textbf{Implements the tail itself}: \texttt{haveTail\,=\,(NumBoxesIn>NumSVDBoxes)}, after which
+  boxes \texttt{NumSVDBoxes+1..NumBoxesIn} are ordinary B-spline boxes off the caller's
+  \texttt{UInterp}/\texttt{PInterp}/\texttt{QInterp}. Callers pass \texttt{NumBoxesIn} equal to
+  \texttt{NumSVDBoxes} to get pure SVD. \\
+\file{RMATPROPHybridSVDGenericDelta.f90} & SVD $+$ B-spline tail & \file{DeltaFunctionPlugins.f90} & Thin driver
   instantiating \sub{RunHybridSVDGeneric} for the delta-function benchmark, \texttt{Box1GridType=}
   \texttt{'Radau'}. \textbf{BROKEN for this problem -- do not use} (an earlier claim of validation
   here was wrong). Off the exact Mehta-Shepard result by $\pi/2$ at \emph{every} $q$ (mod-$\pi$
@@ -542,10 +546,15 @@ This is the layer you replace or extend for a new Hamiltonian.
   Section~\ref{sec:validation}. The generic
   pipeline's shared-\texttt{S\_out} overlap is invalid under this problem's $R$-dependent Robin BC,
   and is not fixable within that pipeline's shape. See gotcha~\ref{got:sout} and the driver's own
-  header banner. Use \file{RMATPROPSVDRobin.x} or \file{RMATPROPAdiabaticDirectDelta.x}. \\
-\file{RMATPROPHybridSVDGenericSech.f90} & All-SVD & \file{SechFunctionPlugins.f90} & Thin driver
-  for the (2-fermion+1-distinguishable) sech$^2$ case, domain $[0,\pi/2]$. \\
-\file{RMATPROPHybridSVDGenericSech3Boson.f90} & All-SVD & \file{SechFunctionPlugins.f90} & Thin
+  header banner. Use \file{RMATPROPSVDRobin.x} or \file{RMATPROPAdiabaticDirectDelta.x}.
+  (Tail via an optional \texttt{.inp} trailer; absent means pure SVD. The defect above afflicts the
+  SVD boxes, so a tail does not rescue it.) \\
+\file{RMATPROPHybridSVDGenericSech.f90} & SVD $+$ B-spline tail & \file{SechFunctionPlugins.f90} &
+  Thin driver for the (2-fermion+1-distinguishable) sech$^2$ case, domain $[0,\pi/2]$. Tail via an
+  optional \texttt{.inp} trailer (\texttt{NumBoxesTotal} $+$
+  \texttt{OrderTail}/\texttt{xNumPointsTail}/\texttt{LegPointsTail}); an \texttt{.inp} without it
+  runs pure SVD. \\
+\file{RMATPROPHybridSVDGenericSech3Boson.f90} & SVD $+$ B-spline tail & \file{SechFunctionPlugins.f90} & Thin
   driver for the equal-mass \emph{3-identical-boson} sech$^2$ case, domain $[0,\pi/6]$,
   \texttt{Left1D=Right1D=1} (Neumann-Neumann, even-parity BC at both edges --
   \sub{SechGridMaker}'s own \texttt{xMax}$\,\le\,\phi_{23}$ branch already handles the domain's
