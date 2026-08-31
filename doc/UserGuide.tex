@@ -280,7 +280,9 @@ then the driver programs, then ASB's dataset-generation side.
   is what every adiabatic per-$R$ diagonalization ultimately calls. \\
   \sub{CalcEigenErrors}, \sub{FixPhase} (enforces sign continuity of eigenvectors across
   successive $R$ -- \textbf{critical}: DSYGV/ARPACK's per-$R$ eigenvector sign is arbitrary, and an
-  uncorrected sign flip between adjacent $R$ corrupts any cross-$R$ overlap/coupling calculation),
+  uncorrected sign flip between adjacent $R$ corrupts any cross-$R$ overlap/coupling calculation;
+  note it chains $i_R>1$ back to $i_R-1$ only \emph{within a single} \sub{OneDimChannelsGeneric}
+  call -- gotcha~\ref{got:phasechain} for why that is not sufficient on its own),
   \sub{CalcOverlap}, \sub{CalcPHF} (Hellmann-Feynman $P$-matrix, $P_{mn}=\langle\Phi_m|\partial_R
   \Phi_n\rangle$).
 \item[\file{milne\_core.f90}] \hfill \\
@@ -329,7 +331,25 @@ SUBROUTINE RobinCoeffProc(R,kLeft,kRight)
   ARPACK shift-invert diagonalization, \sub{FixPhase}, \sub{CalcPHF} machinery, but the
   potential/grid/BC come from the three caller-supplied procedures above instead of a hardcoded
   \texttt{use potential} + \sub{GridMakerHHL} pipeline. \textbf{\texttt{GridRebuildEveryR} is the
-  single most important argument to get right} -- see Section~\ref{sec:gotchas}.\\
+  single most important argument to get right} -- see Section~\ref{sec:gotchas}. The trailing
+  \texttt{PhaseSeed} argument is \texttt{OPTIONAL} and threads the eigenvector phase across calls;
+  any caller driving a box chain \emph{must} pass it and \emph{must} call in ascending-$R$ order
+  (gotcha~\ref{got:phasechain}).\\
+  \sub{CalcPBC} -- the boundary-condition contribution to $P$ that \sub{CalcPHF} structurally
+  cannot see. \sub{CalcPHF} applies Hellmann-Feynman to $\tilde h=-\partial_\theta^2+2\mu R^2V$, so
+  every term it forms carries a factor of $V$ or $\partial_RV$; that is complete only when the whole
+  $R$-dependence sits in the potential. For an $R$-dependent Robin BC, differentiating the
+  eigenvalue problem and integrating by parts twice leaves a surface term:
+  \[ P_{mn}=\frac{\langle\Phi_m|\partial_RW|\Phi_n\rangle-\dot k_b\,\Phi_m(b)\Phi_n(b)
+     +\dot k_a\,\Phi_m(a)\Phi_n(a)}{\lambda_n-\lambda_m},\qquad W=2\mu R^2V,\ \
+     \lambda_n=2\mu R^2U_n. \]
+  Only $\dot k=\mathrm{d}k/\mathrm{d}R$ appears, never $k$, so an $R$-\emph{independent} BC of any
+  kind contributes exactly zero -- which is why \sub{CalcPHF} alone was correct everywhere else.
+  $\Phi_n$ at either edge is a single eigenvector coefficient (\texttt{mPsi(1,n)} or
+  \texttt{mPsi(MatrixDim,n)}): the BC-adapted basis has exactly one function nonzero at each edge,
+  with value exactly $1$ there. Without this the delta-function problem -- whose contact
+  interaction enters \emph{only} through $k_{\mathrm{Right}}$, with $V\equiv0$ -- gets $P=0$
+  identically, and hence no channel coupling whatsoever.\\
   \sub{CalcHamiltonianGeneric} -- the potential-agnostic Hamiltonian-matrix assembly
   \sub{OneDimChannelsGeneric} calls internally; structurally identical to ASB's own
   \sub{CalcHamiltonian} but takes \texttt{Pot}/\texttt{dPot} values from \sub{MyPotential} instead
@@ -493,6 +513,16 @@ This is the layer you replace or extend for a new Hamiltonian.
   \times$ more expensive than an interpolation lookup. Hardcoded to the equal-mass 3-identical-
   boson sech$^2$ problem, domain $[0,\pi/6]$, \texttt{Left=Right=1}. Use this file as the
   \textbf{template} for a new no-interpolation B-spline-box driver. \\
+\file{RMATPROPAdiabaticDirectDelta.x} & B-spline & Direct
+  (\file{DeltaAdiabaticPotentialDirect.f90}) & Delta-function analog of
+  \file{RMATPROPAdiabaticDirect3Boson.x}: \texttt{Left=1}, \texttt{Right=3} (Robin,
+  $k_{\mathrm{Right}}=\sqrt{2\mu}R$), no \texttt{DataDir} at all (\texttt{Threshold}/\texttt{Leff}
+  are the exact analytic values). Needs no cross-$R$ overlap matrix, so it sidesteps the
+  shared-\texttt{S\_out} defect that breaks \file{RMATPROPHybridSVDGenericDelta.x}. Reaches
+  ${\sim}7.9\times10^{-3}$\,rad against exact -- the ordinary 5-channel truncation floor.
+  \texttt{DirectNumSolve} carries the $Q=-P\!\cdot\!P$ closure sum over more intermediate states
+  than the retained channels before truncating (that sum is exact only over a complete set).
+  \textbf{Boxes must be built in ascending-$R$ order} -- gotcha~\ref{got:phasechain}. \\
 \file{RMATPROPHybridSVD.x} & SVD (+ B-spline tail) & Tabulated, via
   \file{SVDChannelBasis.f90}'s own hardcoded \sub{OneDimChannels} call & \textbf{Superseded} by
   the generic pipeline below; kept buildable but not the recommended starting point. \\
@@ -505,8 +535,11 @@ This is the layer you replace or extend for a new Hamiltonian.
   ($\Vert S^\dagger S-I\Vert_\infty$), written to \texttt{Recombination.dat}. \\
 \file{RMATPROPHybridSVDGenericDelta.f90} & All-SVD & \file{DeltaFunctionPlugins.f90} & Thin driver
   instantiating \sub{RunHybridSVDGeneric} for the delta-function benchmark, \texttt{Box1GridType=}
-  \texttt{'Radau'}. \textbf{Validated}: reproduces \file{RMATPROPHybridSVDRobin.x}'s own results
-  exactly. \\
+  \texttt{'Radau'}. \textbf{BROKEN for this problem -- do not use} (an earlier claim of validation
+  here was wrong). Off by $8.822$\,rad against the exact Mehta-Shepard result: the generic
+  pipeline's shared-\texttt{S\_out} overlap is invalid under this problem's $R$-dependent Robin BC,
+  and is not fixable within that pipeline's shape. See gotcha~\ref{got:sout} and the driver's own
+  header banner. Use \file{RMATPROPHybridSVDRobin.x} or \file{RMATPROPAdiabaticDirectDelta.x}. \\
 \file{RMATPROPHybridSVDGenericSech.f90} & All-SVD & \file{SechFunctionPlugins.f90} & Thin driver
   for the (2-fermion+1-distinguishable) sech$^2$ case, domain $[0,\pi/2]$. \\
 \file{RMATPROPHybridSVDGenericSech3Boson.f90} & All-SVD & \file{SechFunctionPlugins.f90} & Thin
@@ -923,6 +956,34 @@ round-trip that data through a fixed-width file format.
 %============================================================
 
 \begin{enumerate}[leftmargin=*]
+\item\label{got:sout} \textbf{The generic SVD pipeline's shared overlap matrix is only valid for an
+  $R$-\emph{independent} angular basis.} \file{GenericSVDChannelBasis.f90} builds a box's cross-$R$
+  channel-overlap $O$ by sandwiching a single \texttt{S\_out}, and \sub{OneDimChannelsGeneric}
+  assigns \texttt{S\_out\,=\,S} only \emph{after} its $R$ loop -- so it is the overlap at the box's
+  \textbf{last} radial node. For \texttt{Left/Right} in $\{0,1,2\}$ the basis never changes with $R$
+  and this is exact. With a Robin BC (\texttt{Left/Right\,=\,3}) whose coefficient depends on $R$ --
+  the delta-function problem's $k_{\mathrm{Right}}=\sqrt{2\mu}R$ -- \sub{CalcBasisFuncsBP} is
+  rebuilt at every $R$ and the trick breaks \emph{silently}: $O$'s same-$R$ block, which must be the
+  identity at every node, is off by up to $3.3\times10^{-2}$ on the diagonal at the far end of a box,
+  decaying linearly toward the node where $S$ was captured. Returning $S$ per $R$ would not fix it
+  either -- the correct cross-$R$ overlap needs a \emph{cross-basis} Gram
+  $\int u_i^{(R_a)}u_j^{(R_b)}$, obtainable only by pointwise real-space evaluation (what
+  \file{RobinSVDChannelBasis.f90} does). This is what makes \file{RMATPROPHybridSVDGenericDelta.x}
+  unusable for the delta benchmark, and it is a property of \emph{driving} that general module with
+  an $R$-dependent BC, not a defect in the module.
+\item\label{got:phasechain} \textbf{\sub{FixPhase} only chains eigenvector phases \emph{within} one
+  \sub{OneDimChannelsGeneric} call.} Callers that drive an R-matrix box chain invoke it once per box,
+  so without help each box inherits whatever arbitrary sign ARPACK returned at its own first $R$ --
+  an eigenvector-gauge \emph{jump} at every box boundary, exactly where \sub{BoxMatch} matches
+  amplitudes assuming both sides share a channel basis. A gauge held constant over the whole domain
+  is unobservable; one that jumps per box is not. Fixed by threading the optional \texttt{PhaseSeed}
+  between calls, which \textbf{requires callers to build boxes in ascending-$R$ order}: the
+  ordinary-box drivers previously built $2\ldots N{-}1$, then $1$, then $N$ -- a \emph{caching}
+  grouping (interior boxes cache across energies; box 1 needs the regularity condition; the last
+  box's \texttt{NumOpenR} varies with energy), harmless while \sub{SetAdiabaticPotential} was
+  stateless, and load-bearing the moment a driver substituted a stateful eigensolve. Symptom to
+  recognize: per-box data correct in isolation, but the answer degrading \emph{non-monotonically}
+  under refinement.
 \item \textbf{Literal $R=0$ is unusable for direct potential evaluation.} The hyperspherical
   kinetic prefactor $m=-1/(2\mu R^2)$ is genuinely singular there (confirmed: crashes
   LAPACK's \texttt{DLASCL} with an illegal-parameter error, and ARPACK's \texttt{\_saupd} with
@@ -1030,6 +1091,18 @@ how often to reach for them:
   is how the dropped-square-root \texttt{RPair} typo was found this session -- it was invisible in
   end-to-end scattering output (just ``somewhat wrong''), obvious once isolated to the raw
   potential values.
+\item \textbf{Box-count (and order) consistency.} Box count is a pure discretization choice, so a
+  converged propagation must be blind to it; likewise \texttt{LSVD}. Running the same physics at
+  $N$ and $2N$ boxes and diffing is cheap, needs no exact answer, and is the sharpest available
+  test for a system that has none. It is what caught the per-box gauge bug
+  (gotcha~\ref{got:phasechain}) in three separate drivers: \file{RMATPROPAdiabaticDirect3Boson.x}
+  went from $\max|\delta_{20\text{box}}-\delta_{1\text{box}}|=1.9\times10^{-1}$ to
+  $4.6\times10^{-3}$\,rad, and \repo{VeffAtomIon1D}'s \file{RunHybridAtomIon.x} from
+  $6.6\times10^{-2}$ to $3.7\times10^{-11}$\,rad (30 vs.\ 60 SVD boxes), with
+  \texttt{LSVD}$\,=12$ vs.\ $24$ agreeing to $4.2\times10^{-11}$. \file{TestBoxCountRmat.f90} is
+  the standalone version. \textbf{Always include a configuration the bug cannot affect as a
+  control} -- a single-box run has no box boundary at which a gauge can jump, so it must be
+  unchanged to $0$; it was, which validated the mechanism rather than merely the outcome.
 \item \textbf{Literature/exact-formula comparison} where available (Mehta-Shepard atom-dimer
   $K$-matrix, Amaya-Tapia/Larsen/Popiel coupled-channel phase shifts, McGuire's exact
   elastic-unitarity result) -- the gold standard, but only available for the handful of exactly
