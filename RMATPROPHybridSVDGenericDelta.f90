@@ -31,18 +31,18 @@
 ! with R, S is genuinely constant, and the shared-S_out trick is EXACT -- so
 ! RMATPROPHybridSVDGenericSech3Boson.x (Left=1, Right=1, fixed grid) is unaffected.
 !
-! Use RMATPROPHybridSVDRobin.x (pointwise, same physics, ~8e-3 rad) or
+! Use RMATPROPSVDRobin.x (pointwise, same physics, ~8e-3 rad) or
 ! RMATPROPAdiabaticDirectDelta.x (ordinary B-spline boxes, ~7.9e-3 rad) for this benchmark.
 !****************************************************************************************************
 !****************************************************************************************************
 ! Regression test for RMATPROPHybridSVDGeneric.f90's RunHybridSVDGeneric: a thin driver, reusing
-! the SAME physics/plugins as RMATPROPHybridSVDRobin.f90 (equal-mass three-boson delta-function
+! the SAME physics/plugins as RMATPROPSVDRobin.f90 (equal-mass three-boson delta-function
 ! problem, DeltaFunctionPlugins.f90's DeltaZeroPotential/DeltaWedgeGridMaker/DeltaRobinCoeff), but
 ! routed through the genuinely reusable RunHybridSVDGeneric subroutine instead of RobinSVDChannel-
-! Basis.f90's bespoke box-builder. Must reproduce RMATPROPHybridSVDRobin.x's own validated results
+! Basis.f90's bespoke box-builder. Must reproduce RMATPROPSVDRobin.x's own validated results
 ! (matches KMSFormulas.f's exact SolveQ to machine/basis-truncation precision) -- proves the
 ! genericized propagator itself is correct before it's trusted with new (atom-ion) physics.
-! Same RMATPROPHybridSVDRobin.inp input format; reads RMATPROPHybridSVDGenericDelta.inp.
+! Same RMATPROPSVDRobin.inp input format; reads RMATPROPHybridSVDGenericDelta.inp.
 !
 ! GENUINE HYBRID (optional): an OrderTail/xNumPointsTail/LegPointsTail/DataDir trailer in the
 ! .inp (all four present) requests a B-spline tail beyond NumSVDBoxes, reading

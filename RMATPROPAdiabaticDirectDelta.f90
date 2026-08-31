@@ -9,7 +9,7 @@
 !
 ! Purpose: this session's final diagnostic. RMATPROPHybridSVDGenericDelta.x (SVD/DVR boxes, generic
 ! ARPACK-based per-R diagonalization via GenericSVDChannelBasis.f90) gives badly wrong results (both
-! with and without a B-spline tail) while RMATPROPHybridSVDAnalytic.x/RMATPROPHybridSVDRobin.x/
+! with and without a B-spline tail) while RMATPROPSVDAnalytic.x/RMATPROPSVDRobin.x/
 ! RMATPROPAdiabatic.x (tabulated-interpolated) all agree with the exact Mehta-Shepard result. This
 ! driver isolates whether OneDimChannelsGeneric's ARPACK+FixPhase diagonalization itself is at fault,
 ! or whether the fault is specific to GenericSVDChannelBasis.f90's shared-single-R-overlap-matrix

@@ -542,7 +542,7 @@ This is the layer you replace or extend for a new Hamiltonian.
   Section~\ref{sec:validation}. The generic
   pipeline's shared-\texttt{S\_out} overlap is invalid under this problem's $R$-dependent Robin BC,
   and is not fixable within that pipeline's shape. See gotcha~\ref{got:sout} and the driver's own
-  header banner. Use \file{RMATPROPHybridSVDRobin.x} or \file{RMATPROPAdiabaticDirectDelta.x}. \\
+  header banner. Use \file{RMATPROPSVDRobin.x} or \file{RMATPROPAdiabaticDirectDelta.x}. \\
 \file{RMATPROPHybridSVDGenericSech.f90} & All-SVD & \file{SechFunctionPlugins.f90} & Thin driver
   for the (2-fermion+1-distinguishable) sech$^2$ case, domain $[0,\pi/2]$. \\
 \file{RMATPROPHybridSVDGenericSech3Boson.f90} & All-SVD & \file{SechFunctionPlugins.f90} & Thin
@@ -587,6 +587,20 @@ $R\in[40,50]$. Both axes matter independently for \texttt{FitLeff.data}'s \textt
 Section~\ref{sec:leffconv}) -- when comparing \file{RMATPROPAdiabatic.x} against
 \file{RMATPROPHybridSVDGenericSech3Boson.x} on the same physics, point both drivers at datasets
 matching on \emph{both} axes, or an apparent disagreement may just be inconsistent auxiliary data.
+
+\paragraph{Naming convention: \texttt{Hybrid} means the driver can switch box type mid-chain.}
+A driver is named \file{RMATPROPHybridSVD*} only if it can propagate SVD boxes \emph{and} ordinary
+adiabatic (B-spline) boxes in one run -- i.e. it accepts a total \texttt{NumBoxes} exceeding
+\texttt{NumSVDBoxes} and builds the remainder from tabulated \texttt{Uad}/\texttt{Pmat}/\texttt{Qmat}.
+Drivers that only ever build SVD boxes are named \file{RMATPROPSVD*}
+(\file{RMATPROPSVDAnalytic.x}, \file{RMATPROPSVDRobin.x}). Those two have no tail machinery
+\emph{at all}: no \sub{ReadAdiabaticData}, no \texttt{BPData}, no
+\texttt{NumSVDBoxes+1..NumBoxes} loop anywhere, and \texttt{NumBoxes} is \emph{assigned} from
+\texttt{NumSVDBoxes} rather than read from the \texttt{.inp}, so no input can reach a tail. Their
+\texttt{NumBoxes} is chain bookkeeping only -- box-edge spacing denominator, \texttt{Boxes(:)}
+allocation, and \sub{CalcK}'s outermost-box argument -- not a switch. \file{RunHybridAtomIon.x}
+in \repo{VeffAtomIon1D} also satisfies the rule (SVD boxes to $x_{\text{switch}}$, then one ordinary
+B-spline box built by \sub{SetAtomIonAsymptoticPotential}/\sub{CalcGamLam}).
 
 \subsection{Layer 4 -- ASB: dataset generation for the tabulate+interpolate path}
 
@@ -1120,8 +1134,8 @@ how often to reach for them:
   \textbf{Driver} & $q>0.1$ & $q>0.3$ & $q\tan\delta|_{q\to0}$ \\
   \midrule
   \file{RMATPROPAdiabatic.x} (tabulated)   & $7.60\times10^{-3}$ & $7.60\times10^{-3}$ & $+0.00021$ \\
-  \file{RMATPROPHybridSVDAnalytic.x}       & $8.22\times10^{-3}$ & $8.22\times10^{-3}$ & $-0.00000$ \\
-  \file{RMATPROPHybridSVDRobin.x}          & $8.24\times10^{-3}$ & $8.24\times10^{-3}$ & $-0.00004$ \\
+  \file{RMATPROPSVDAnalytic.x}       & $8.22\times10^{-3}$ & $8.22\times10^{-3}$ & $-0.00000$ \\
+  \file{RMATPROPSVDRobin.x}          & $8.24\times10^{-3}$ & $8.24\times10^{-3}$ & $-0.00004$ \\
   \file{RMATPROPAdiabaticDirectDelta.x}    & $7.91\times10^{-3}$ & $7.91\times10^{-3}$ & $+0.00064$ \\
   \file{RMATPROPHybridSVDGenericDelta.x}   & $1.57$              & $1.57$              & $+0.00989$ \\
   \bottomrule

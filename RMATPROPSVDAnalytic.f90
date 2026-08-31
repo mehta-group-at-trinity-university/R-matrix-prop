@@ -56,7 +56,7 @@ PROGRAM main
   ! Read the run's numerical parameters. Physics (mu/alpha/ddim/Threshold/Leff) is hardcoded
   ! below to the exact delta-function values, not read from any file.
   !----------------------------------------------------------------------
-  OPEN(unit=7,file='RMATPROPHybridSVDAnalytic.inp',status='old')
+  OPEN(unit=7,file='RMATPROPSVDAnalytic.inp',status='old')
   READ(7,*)
   READ(7,*) NumChannels
   READ(7,*)

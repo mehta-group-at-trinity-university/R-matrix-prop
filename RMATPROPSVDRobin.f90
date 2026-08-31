@@ -21,7 +21,7 @@
 !
 ! Purpose: test the hybrid SVD/adiabatic propagator's GENERIC (non-analytic-shortcut) numerical
 ! machinery against the known-exact DeltaScat/Mehta-Shepard benchmark -- the direct successor to
-! RMATPROPHybridSVDAnalytic.f90 (which validated the box-chaining/CalcK machinery using the
+! RMATPROPSVDAnalytic.f90 (which validated the box-chaining/CalcK machinery using the
 ! closed-form shortcut) and RMATPROPAdiabatic_seeded.f90 (which validated the B-spline pipeline).
 !****************************************************************************************************
 PROGRAM main
@@ -61,7 +61,7 @@ PROGRAM main
   ! Read the run's numerical parameters. Physics (mu/alpha/ddim/Threshold/Leff) is hardcoded
   ! below to the exact delta-function values, not read from any file.
   !----------------------------------------------------------------------
-  OPEN(unit=7,file='RMATPROPHybridSVDRobin.inp',status='old')
+  OPEN(unit=7,file='RMATPROPSVDRobin.inp',status='old')
   READ(7,*)
   READ(7,*) NumChannels
   READ(7,*)
@@ -84,7 +84,7 @@ PROGRAM main
   Pi = dacos(-1d0)
   ! BuildSVDBoxRobin needs the global LegPoints/xLeg/wLeg (used for its own angular
   ! quadrature) -- unlike BuildSVDBoxAnalytic's pure closed-form path, which never
-  ! touches them at all (RMATPROPHybridSVDAnalytic.f90 has no equivalent block).
+  ! touches them at all (RMATPROPSVDAnalytic.f90 has no equivalent block).
   LegendreFile = 'Legendre.dat'
   LegPoints = 10
   ALLOCATE(xLeg(LegPoints),wLeg(LegPoints))
@@ -163,7 +163,7 @@ PROGRAM main
             ODiagLSVDBoxes(:,iBox),ODiagRSVDBoxes(:,iBox),wsq1SVDBoxes(iBox),wsqLSVDBoxes(iBox))
        ! LThis==LSVD for every box here (both GridTypes used), so this always fills the
        ! whole MatrixDimSVD-sized cache slot -- the explicit 1:LThis*NumChannels slicing
-       ! is kept only for symmetry with RMATPROPHybridSVDAnalytic.f90's identical pattern.
+       ! is kept only for symmetry with RMATPROPSVDAnalytic.f90's identical pattern.
        Gam0SVDBoxes(1:LThis*NumChannels,1:LThis*NumChannels,iBox) = EIGSVD%Gam0
        OverlapSVDBoxes(1:LThis*NumChannels,1:LThis*NumChannels,iBox) = EIGSVD%Overlap
        LamSVDBoxes(1:LThis*NumChannels,1:LThis*NumChannels,iBox) = EIGSVD%Lam

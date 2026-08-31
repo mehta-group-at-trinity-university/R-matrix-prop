@@ -189,7 +189,7 @@ CONTAINS
        ! (confirmed directly: evecPhi(1,1) ~3e-5 vs ~2 for other channels at R~65-70,
        ! sign essentially random node-to-node) -- causing exactly this spurious sign-flip
        ! failure mode, just relocated to channel 1 specifically and only at large R (this
-       ! is what caused RMATPROPHybridSVDRobin.x's box-14-onward blowup: max|Onum-Oana|=2,
+       ! is what caused RMATPROPSVDRobin.x's box-14-onward blowup: max|Onum-Oana|=2,
        ! i.e. a full sign flip, isolated via DiagBox14.f90 in this session's scratch tests).
        !
        ! Correct fix: use whichever boundary point is NEVER small for that channel's

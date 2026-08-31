@@ -187,27 +187,27 @@ RMATPROPHybridSVD.x: ${HYBRIDSVD_OBJS}
 RMATPROPHybridSVD.o: RMATPROPHybridSVD.f90 RMatPropCore.o AdiabaticPotential.o SVDChannelBasis.o
 	${CMP} ${DEBUG} ${FORCEDP} ${CMPFLAGS} -c RMATPROPHybridSVD.f90
 
-# All-analytic-SVD delta-function benchmark driver (see RMATPROPHybridSVDAnalytic.f90 header) --
+# All-analytic-SVD delta-function benchmark driver (see RMATPROPSVDAnalytic.f90 header) --
 # every box built by AnalyticSVDChannelBasis.f90, no B-spline/OneDimChannels/FitLeff.data
 # dependency at all. Not part of `all`; build/run separately.
-HYBRIDSVDANALYTIC_OBJS = $(SVD_OBJS) KMSFormulas.o AnalyticSVDChannelBasis.o RMATPROPHybridSVDAnalytic.o
+SVDANALYTIC_OBJS = $(SVD_OBJS) KMSFormulas.o AnalyticSVDChannelBasis.o RMATPROPSVDAnalytic.o
 
-RMATPROPHybridSVDAnalytic.x: ${HYBRIDSVDANALYTIC_OBJS}
-	${CMP} ${DEBUG} ${HYBRIDSVDANALYTIC_OBJS} ${INCLUDE} ${ARPACK} ${LAPACK} ${CMPFLAGS} ${FORCEDP} -o RMATPROPHybridSVDAnalytic.x
+RMATPROPSVDAnalytic.x: ${SVDANALYTIC_OBJS}
+	${CMP} ${DEBUG} ${SVDANALYTIC_OBJS} ${INCLUDE} ${ARPACK} ${LAPACK} ${CMPFLAGS} ${FORCEDP} -o RMATPROPSVDAnalytic.x
 
-RMATPROPHybridSVDAnalytic.o: RMATPROPHybridSVDAnalytic.f90 RMatPropCore.o SVDChannelBasis.o AnalyticSVDChannelBasis.o
-	${CMP} ${DEBUG} ${FORCEDP} ${CMPFLAGS} -c RMATPROPHybridSVDAnalytic.f90
+RMATPROPSVDAnalytic.o: RMATPROPSVDAnalytic.f90 RMatPropCore.o SVDChannelBasis.o AnalyticSVDChannelBasis.o
+	${CMP} ${DEBUG} ${FORCEDP} ${CMPFLAGS} -c RMATPROPSVDAnalytic.f90
 
-# All-Robin-SVD delta-function benchmark driver (see RMATPROPHybridSVDRobin.f90 header) -- every
+# All-Robin-SVD delta-function benchmark driver (see RMATPROPSVDRobin.f90 header) -- every
 # box built by RobinSVDChannelBasis.f90's genuine numerical diagonalization (CalcBasisFuncsBP's
 # Robin BC, fed the exact log-derivative). Not part of `all`; build/run separately.
-HYBRIDSVDROBIN_OBJS = $(SVD_OBJS) KMSFormulas.o RobinSVDChannelBasis.o RMATPROPHybridSVDRobin.o
+SVDROBIN_OBJS = $(SVD_OBJS) KMSFormulas.o RobinSVDChannelBasis.o RMATPROPSVDRobin.o
 
-RMATPROPHybridSVDRobin.x: ${HYBRIDSVDROBIN_OBJS}
-	${CMP} ${DEBUG} ${HYBRIDSVDROBIN_OBJS} ${INCLUDE} ${ARPACK} ${LAPACK} ${CMPFLAGS} ${FORCEDP} -o RMATPROPHybridSVDRobin.x
+RMATPROPSVDRobin.x: ${SVDROBIN_OBJS}
+	${CMP} ${DEBUG} ${SVDROBIN_OBJS} ${INCLUDE} ${ARPACK} ${LAPACK} ${CMPFLAGS} ${FORCEDP} -o RMATPROPSVDRobin.x
 
-RMATPROPHybridSVDRobin.o: RMATPROPHybridSVDRobin.f90 RMatPropCore.o SVDChannelBasis.o RobinSVDChannelBasis.o
-	${CMP} ${DEBUG} ${FORCEDP} ${CMPFLAGS} -c RMATPROPHybridSVDRobin.f90
+RMATPROPSVDRobin.o: RMATPROPSVDRobin.f90 RMatPropCore.o SVDChannelBasis.o RobinSVDChannelBasis.o
+	${CMP} ${DEBUG} ${FORCEDP} ${CMPFLAGS} -c RMATPROPSVDRobin.f90
 
 # Canonical shared home is $(LIB_DIR)/AdiabaticInterfaces.f90 -- promoted there from this repo
 # once VeffAtomIon1D became a second real consumer; see AdiabaticInterfaces.f90's own header.
@@ -255,7 +255,7 @@ HYBRIDSVDGENERICSECH_OBJS = ${GENERICSVD_OBJS} SechFunctionPlugins.o RMATPROPHyb
 RMATPROPHybridSVDGenericSech.x: ${HYBRIDSVDGENERICSECH_OBJS}
 	${CMP} ${DEBUG} ${HYBRIDSVDGENERICSECH_OBJS} ${INCLUDE} ${ARPACK} ${LAPACK} ${CMPFLAGS} ${FORCEDP} -o RMATPROPHybridSVDGenericSech.x
 
-RMATPROPHybridSVDGenericSech.o: RMATPROPHybridSVDGenericSech.f90 RMatPropCore.o RMATPROPHybridSVDGeneric.o SechFunctionPlugins.o
+RMATPROPHybridSVDGenericSech.o: RMATPROPHybridSVDGenericSech.f90 RMatPropCore.o RMATPROPHybridSVDGeneric.o SechFunctionPlugins.o AdiabaticPotential.o
 	${CMP} ${DEBUG} ${FORCEDP} ${CMPFLAGS} -c RMATPROPHybridSVDGenericSech.f90
 
 # Same SechFunctionPlugins.f90 physics as above, but for the THREE-IDENTICAL-BOSON case (domain

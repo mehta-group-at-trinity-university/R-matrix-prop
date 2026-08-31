@@ -86,15 +86,25 @@ built differs between drivers. Key pieces, roughly in the order a driver calls t
 | `RMATPROP2016.x` | `BalujaParameters` module — synthetic multipole-coupling test potential | Reproduces the Baluja et al. CPC (1982) benchmark; uses `RMATPROP.inp`-style input (`NumParticles`/`NumChannels`/masses/... — format documented in the `.inp` file's own trailer comment), read via `RMatPropCore`'s `ReadGlobal`, not the `DataDir`-based format below. |
 | `RMATPROPAdiabatic.x` | `AdiabaticPotential.f90`, reading tabulated `Uad.dat`/`Pmat.dat`/`Qmat.dat` from a `DataDir` (see below) | Real adiabatic hyperspherical data in place of the synthetic Baluja potential; energy-scan driver (Emin/Emax/NumEnergies, linear or quadratic spacing) validated against Amaya-Tapia, Larsen & Popiel, Few-Body Systems 23, 87-109 (1997). |
 | `RMATPROPHybridSVD.x` | Box 1..`NumSVDBoxes`: SVD/DVR boxes via `SVDChannelBasis.f90` (interfacing `adiabaticSolver1D.f90`'s `OneDimChannels`); remaining boxes: same B-spline basis as `RMATPROPAdiabatic.x` | `Rswitch` between the two basis types falls out of the uniform box-edge spacing formula. |
-| `RMATPROPHybridSVDAnalytic.x` | Every box SVD, built by `AnalyticSVDChannelBasis.f90`'s `BuildSVDBoxAnalytic` — per-R channel data (`Uad`, cross-R overlap) from `KMSFormulas.f`'s closed-form `SolveQ`/`EvalU`/`EvalOverlapAt` | Zero-basis-error benchmark driver for the equal-mass three-boson delta-function problem (Mehta, Esry & Greene, PRA 76, 022711 (2007)); physics hardcoded, no `Fit.data`/`FitLeff.data`. Not part of `all`. |
-| `RMATPROPHybridSVDRobin.x` | Every box SVD, built by `RobinSVDChannelBasis.f90`'s `BuildSVDBoxRobin` — per-R channel data from a genuine numerical diagonalization (`CalcBasisFuncsBP`'s Robin/`Left=1,Right=3` BC, fed the exact delta-function log-derivative `sqrt(2*mu)*R` at `phi=pi/6`) | Same benchmark as above but exercising the SVD machinery's generic (non-closed-form) numerical path. See "Delta-function SVD-box benchmark" below — two real bugs were found and fixed building this. Not part of `all`. |
+| `RMATPROPSVDAnalytic.x` | Every box SVD, built by `AnalyticSVDChannelBasis.f90`'s `BuildSVDBoxAnalytic` — per-R channel data (`Uad`, cross-R overlap) from `KMSFormulas.f`'s closed-form `SolveQ`/`EvalU`/`EvalOverlapAt` | Zero-basis-error benchmark driver for the equal-mass three-boson delta-function problem (Mehta, Esry & Greene, PRA 76, 022711 (2007)); physics hardcoded, no `Fit.data`/`FitLeff.data`. Not part of `all`. |
+| `RMATPROPSVDRobin.x` | Every box SVD, built by `RobinSVDChannelBasis.f90`'s `BuildSVDBoxRobin` — per-R channel data from a genuine numerical diagonalization (`CalcBasisFuncsBP`'s Robin/`Left=1,Right=3` BC, fed the exact delta-function log-derivative `sqrt(2*mu)*R` at `phi=pi/6`) | Same benchmark as above but exercising the SVD machinery's generic (non-closed-form) numerical path. See "Delta-function SVD-box benchmark" below — two real bugs were found and fixed building this. Not part of `all`. |
 | `RMATPROPHybridSVDGenericDelta.x` | Every box SVD via `GenericSVDChannelBasis.f90`'s `BuildSVDBoxGeneric`, driven by `DeltaFunctionPlugins.f90` through `lib/AdiabaticSolverGeneric.f90`'s `OneDimChannelsGeneric` | **BROKEN for this problem — 8.822 rad off the exact result, do not use.** The generic pipeline sandwiches ONE overlap matrix (`S_out`, captured at the box's last radial node) for every cross-R pair, which is only valid when the angular basis is R-independent. The `Right=3` Robin BC (`kRight=sqrt(2*mu)*R`) rebuilds the basis at every R, so `O`'s same-R block is off the identity by up to 3.3e-2. Not fixable here — see the driver's own header banner. Unrelated to the gauge bug below, which is fixed. |
-| `RMATPROPHybridSVDGenericSech.x` / `RMATPROPHybridSVDGenericSech3Boson.x` | Same generic SVD pipeline via `SechFunctionPlugins.f90`; the `3Boson` variant supports a B-spline tail beyond `NumSVDBoxes` | `Left=1,Right=1` and a fixed grid, so the basis never varies with R and the shared-`S_out` trick above is EXACT — these are unaffected by that defect. |
+| `RMATPROPHybridSVDGenericSech.x` / `RMATPROPHybridSVDGenericSech3Boson.x` | Same generic SVD pipeline via `SechFunctionPlugins.f90`. Both support a B-spline tail beyond `NumSVDBoxes`: `Sech3Boson` reads `NumSVDBoxes, NumBoxes` on one line, `Sech` takes an **optional** trailer (`NumBoxesTotal` + `OrderTail/xNumPointsTail/LegPointsTail`) so an `.inp` without it still runs pure-SVD unchanged | The angular BC is R-independent (`Right=0` and `Right=1` respectively, fixed grid), so the basis never varies with R and the shared-`S_out` trick above is EXACT — these are unaffected by that defect. |
 | `RMATPROPAdiabaticDirectDelta.x` / `RMATPROPAdiabaticDirect3Boson.x` | Ordinary B-spline boxes (`RMatPropCore`), but `Uad`/`P`/`Q` computed directly at every radial quadrature point via `OneDimChannelsGeneric` — no interpolation, no `DataDir` for the delta variant | Needs no cross-R overlap matrix, so it sidesteps the defect above entirely. Delta variant reaches ~7.9e-3 rad, the 5-channel floor. Boxes MUST be built in ascending-R order (phase chaining) — see the note at each build site. |
 | `SVDBound.x` | Single Gauss-Lobatto DVR grid, Dirichlet-Dirichlet | Bound-state solver — one direct diagonalization, no R-matrix box-chaining at all. |
 | `SVDRmat.x` | Same T+V construction as `SVDBound.x` | Wigner-Eisenbud-form single-box R-matrix: one energy-independent diagonalization, then `R(E)` from the pole sum — deliberately *not* the log-derivative/`PartitionAndEliminate`/`BoxMatch` eigenchannel approach used elsewhere in this repo. |
 | `BSplineFree.x` | Single free-particle (`V=0`) box, 2019-era box-1 recipe | Sanity check against the exact free-particle solution; explicitly avoids the newer `BuildBox1CombinedBasis`/`CalcGamLamBox1` machinery. |
 | `PlotWavefunction.x` / `PlotWavefunctionFree.x` / `PlotWavefunctionSVD.x` | n/a (diagnostics) | Standalone, single-energy, single-box wavefunction reconstructions with hard-coded `DataDir`/energy — not general-purpose tools, used to validate against independent RK45 integration / exact analytic forms. |
+
+**Naming convention — `Hybrid` means the driver can switch box type mid-chain.** A driver is named
+`RMATPROPHybridSVD*` only if it can propagate SVD boxes *and* ordinary adiabatic (B-spline) boxes in
+one run, i.e. it accepts a total `NumBoxes` exceeding `NumSVDBoxes` and builds the remainder from
+tabulated `Uad`/`Pmat`/`Qmat`. Drivers that only ever build SVD boxes are named `RMATPROPSVD*`
+(`RMATPROPSVDAnalytic.x`, `RMATPROPSVDRobin.x`) — these two have no tail machinery at all: no
+`ReadAdiabaticData`, no `BPData`, no `NumSVDBoxes+1..NumBoxes` loop anywhere, and `NumBoxes` is
+*assigned* from `NumSVDBoxes` rather than read, so no input can reach a tail. Their `NumBoxes` exists
+only as chain bookkeeping (box-edge spacing denominator, `Boxes(:)` allocation, `CalcK`'s outermost
+box), not as a switch.
 
 ### Data directories (`3bodydata_*_5ch/`)
 
@@ -165,7 +175,7 @@ externally by `Adiabatic-Scattering-BoundStates`'s adiabatic solvers:
 - **A fixed angular B-spline resolution (`OrderPhi`/`xNumPointsPhi`) does not stay adequate as R
   grows** in `RobinSVDChannelBasis.f90` — the Robin condition's `kr=sqrt(2*mu)*R` makes the
   channel-1 (`cosh`) eigenfunction increasingly steep near `phi=pi/6` as R increases, and a
-  resolution adequate at small R can leave `RMATPROPHybridSVDRobin.x`'s phase shift off by up to
+  resolution adequate at small R can leave `RMATPROPSVDRobin.x`'s phase shift off by up to
   ~0.2 rad at low q even though the per-box `Gam0`/`Overlap`/`Lam`/cross-R-overlap all look
   correct in isolation (low-q/near-threshold states have long healing lengths and are
   disproportionately sensitive to this large-R truncation). `xNumPointsPhi=12` was not enough
@@ -180,7 +190,7 @@ three-body phase shifts (`RMATPROPAdiabatic.x` + `3bodydata_delta_5ch`), and exa
 solutions (`BSplineFree.x`, `PlotWavefunctionFree.x`). `verify_AT_MS_tandelta.nb` is a
 Mathematica notebook doing this comparison against literature phase shifts.
 
-### Delta-function SVD-box benchmark (`RMATPROPHybridSVDAnalytic.x` / `RMATPROPHybridSVDRobin.x`)
+### Delta-function SVD-box benchmark (`RMATPROPSVDAnalytic.x` / `RMATPROPSVDRobin.x`)
 
 Both drivers solve the equal-mass three-boson delta-function problem end-to-end using an
 all-SVD box chain (no B-spline tail, no `Fit.data`/`FitLeff.data`), compared against

@@ -1,5 +1,5 @@
 !****************************************************************************************************
-! Generalized drop-in analog of RMATPROPHybridSVDRobin.f90/RMATPROPHybridSVDAnalytic.f90: an
+! Generalized drop-in analog of RMATPROPSVDRobin.f90/RMATPROPSVDAnalytic.f90: an
 ! all-SVD R-matrix propagator, built as a REUSABLE SUBROUTINE (RunHybridSVDGeneric) rather than a
 ! PROGRAM, so any system with a PotentialProc/GridMakerProcI/RobinCoeffProc plugin
 ! (lib/AdiabaticInterfaces.f90) can drive a full box-chained energy scan without forking a new
@@ -8,11 +8,11 @@
 ! propagation logic factored out of the PROGRAM entry point; each system gets a thin driver PROGRAM
 ! that sets its own physics (NumChannels/Threshold/Leff/mu/AlphaFactor/EffDim) and plugins, then
 ! calls this subroutine. See RMATPROPHybridSVDGenericDelta.f90 for the delta-function regression
-! test built this way (validates this file reproduces RMATPROPHybridSVDRobin.x's own results
+! test built this way (validates this file reproduces RMATPROPSVDRobin.x's own results
 ! exactly, before this machinery is trusted with new physics).
 !
 ! Box structure and physics-independent parts of the pipeline are all unchanged from
-! RMATPROPHybridSVDRobin.f90 -- see that file's own header for the full rationale. The only real
+! RMATPROPSVDRobin.f90 -- see that file's own header for the full rationale. The only real
 ! change is BuildSVDBoxRobin -> GenericSVDChannelBasis.f90's BuildSVDBoxGeneric, and
 ! physics/thresholds/plugins becoming subroutine arguments instead of hardcoded module-level
 ! constants.
