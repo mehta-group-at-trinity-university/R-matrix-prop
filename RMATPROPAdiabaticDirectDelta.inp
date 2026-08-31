@@ -1,0 +1,12 @@
+NumChannels
+5
+
+Order  xNumPoints  LegPoints
+5      10          10
+
+NumBoxes  xStart  xEnd
+20        0.0d0   100.0d0
+
+Emin  Emax  NumEnergies
+-0.9999999635d0 -0.02d0 150
+quadratic

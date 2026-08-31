@@ -2,7 +2,7 @@ NumChannels
 5
 
 NumBoxes  xStart  xEnd
-20        0.0d0   100.0d0
+10        0.0d0   500.0d0
 
 Emin  Emax  NumEnergies
 -0.9999999635d0 -0.02d0 150
@@ -13,3 +13,12 @@ LSVD
 
 OrderPhi  xNumPointsPhi
 6         20
+
+NumBoxesTotal
+200
+
+OrderTail  xNumPointsTail  LegPointsTail
+5          10              10
+
+DataDir
+3bodydata_delta_5ch_rmax500

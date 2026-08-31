@@ -10,7 +10,6 @@ LIB_DIR = $(HOME)/Documents/GitHub/lib
 ASBS_DIR = $(HOME)/Documents/GitHub/Adiabatic-Scattering-BoundStates
 OBJS  = besselnew.o Bsplines.o matrix_stuff.o RMatPropCore.o RMATPROP2016.o Quadrature.o Interpolation.o
 ADIABATIC_OBJS = besselnew.o Bsplines.o matrix_stuff.o RMatPropCore.o Quadrature.o Interpolation.o AdiabaticPotential.o RMATPROPAdiabatic.o
-ADIABATIC_SEEDED_OBJS = besselnew.o Bsplines.o matrix_stuff.o RMatPropCore.o Quadrature.o Interpolation.o AdiabaticPotential.o RMATPROPAdiabatic_seeded.o
 SVD_OBJS = besselnew.o Bsplines.o matrix_stuff.o Quadrature.o Interpolation.o Potential.o adiabaticSolver1D.o RMatPropCore.o AdiabaticPotential.o SVDChannelBasis.o
 
 all: RMATPROP2016.x RMATPROPAdiabatic.x
@@ -20,15 +19,6 @@ RMATPROP2016.x:	   ${OBJS}
 
 RMATPROPAdiabatic.x: ${ADIABATIC_OBJS}
 	${CMP} ${DEBUG} ${ADIABATIC_OBJS} ${INCLUDE} ${ARPACK} ${LAPACK} ${CMPFLAGS} ${FORCEDP} -o RMATPROPAdiabatic.x
-
-# Diagnostic: box 1 seeded from DeltaScat's exact R-matrix (Box1Rmatrix.dat) instead of the
-# interpolated pipeline -- see RMATPROPAdiabatic_seeded.f90's own header. Not part of `all`;
-# build/run separately with `make RMATPROPAdiabatic_seeded.x && ./RMATPROPAdiabatic_seeded.x`.
-RMATPROPAdiabatic_seeded.x: ${ADIABATIC_SEEDED_OBJS}
-	${CMP} ${DEBUG} ${ADIABATIC_SEEDED_OBJS} ${INCLUDE} ${ARPACK} ${LAPACK} ${CMPFLAGS} ${FORCEDP} -o RMATPROPAdiabatic_seeded.x
-
-RMATPROPAdiabatic_seeded.o: RMATPROPAdiabatic_seeded.f90 RMatPropCore.o AdiabaticPotential.o
-	${CMP} ${DEBUG} ${FORCEDP} ${CMPFLAGS} -c RMATPROPAdiabatic_seeded.f90
 
 RMatPropCore.o: RMatPropCore.f90 Quadrature.o Interpolation.o
 	${CMP} ${DEBUG} ${FORCEDP} ${CMPFLAGS} -c RMatPropCore.f90
@@ -251,7 +241,7 @@ HYBRIDSVDGENERICDELTA_OBJS = ${GENERICSVD_OBJS} DeltaFunctionPlugins.o RMATPROPH
 RMATPROPHybridSVDGenericDelta.x: ${HYBRIDSVDGENERICDELTA_OBJS}
 	${CMP} ${DEBUG} ${HYBRIDSVDGENERICDELTA_OBJS} ${INCLUDE} ${ARPACK} ${LAPACK} ${CMPFLAGS} ${FORCEDP} -o RMATPROPHybridSVDGenericDelta.x
 
-RMATPROPHybridSVDGenericDelta.o: RMATPROPHybridSVDGenericDelta.f90 RMatPropCore.o RMATPROPHybridSVDGeneric.o DeltaFunctionPlugins.o
+RMATPROPHybridSVDGenericDelta.o: RMATPROPHybridSVDGenericDelta.f90 RMatPropCore.o RMATPROPHybridSVDGeneric.o DeltaFunctionPlugins.o AdiabaticPotential.o
 	${CMP} ${DEBUG} ${FORCEDP} ${CMPFLAGS} -c RMATPROPHybridSVDGenericDelta.f90
 
 # sech^2-well plugin (PotentialProc/GridMakerProcI/RobinCoeffProc) for the generic engine --
@@ -336,6 +326,22 @@ RMATPROPAdiabaticDirect3Boson.x: ${RMATPROPADIABATICDIRECT3BOSON_OBJS}
 
 RMATPROPAdiabaticDirect3Boson.o: RMATPROPAdiabaticDirect3Boson.f90 RMatPropCore.o SechAdiabaticPotentialDirect.o
 	${CMP} ${DEBUG} ${FORCEDP} ${CMPFLAGS} -c RMATPROPAdiabaticDirect3Boson.f90
+
+# Same no-interpolation ordinary-adiabatic-box idea as SechAdiabaticPotentialDirect.o/
+# RMATPROPAdiabaticDirect3Boson.x above, but for the delta-function problem (DeltaFunctionPlugins
+# physics) -- isolates whether OneDimChannelsGeneric's ARPACK+FixPhase diagonalization is trustworthy
+# independent of GenericSVDChannelBasis.f90's own cross-R overlap construction (see this file's own
+# header for the full diagnosis).
+DeltaAdiabaticPotentialDirect.o: DeltaAdiabaticPotentialDirect.f90 RMatPropCore.o AdiabaticInterfaces.o AdiabaticSolverGeneric.o DeltaFunctionPlugins.o
+	${CMP} ${DEBUG} ${FORCEDP} ${CMPFLAGS} -c DeltaAdiabaticPotentialDirect.f90
+
+RMATPROPADIABATICDIRECTDELTA_OBJS = besselnew.o Bsplines.o matrix_stuff.o Quadrature.o Interpolation.o Potential.o adiabaticSolver1D.o RMatPropCore.o AdiabaticInterfaces.o AdiabaticSolverGeneric.o DeltaFunctionPlugins.o DeltaAdiabaticPotentialDirect.o RMATPROPAdiabaticDirectDelta.o
+
+RMATPROPAdiabaticDirectDelta.x: ${RMATPROPADIABATICDIRECTDELTA_OBJS}
+	${CMP} ${DEBUG} ${RMATPROPADIABATICDIRECTDELTA_OBJS} ${INCLUDE} ${ARPACK} ${LAPACK} ${CMPFLAGS} ${FORCEDP} -o RMATPROPAdiabaticDirectDelta.x
+
+RMATPROPAdiabaticDirectDelta.o: RMATPROPAdiabaticDirectDelta.f90 RMatPropCore.o DeltaAdiabaticPotentialDirect.o
+	${CMP} ${DEBUG} ${FORCEDP} ${CMPFLAGS} -c RMATPROPAdiabaticDirectDelta.f90
 
 clean:
 	rm -f *.mod *.o *.x

@@ -57,6 +57,18 @@ CONTAINS
     DOUBLE PRECISION, ALLOCATABLE :: Uad(:,:,:), Psi(:,:,:), S_out(:,:)
     DOUBLE PRECISION, ALLOCATABLE :: O(:,:), dXr(:,:), TmatBulk(:,:)
     DOUBLE PRECISION, ALLOCATABLE :: TempPsi(:)
+    ! PsiT(PsiDim,L,NumStates): Psi with its first two dimensions transposed relative to
+    ! OneDimChannelsGeneric's own (L,PsiDim,NumStates) convention (that shape/ordering is
+    ! shared-library, ~/Documents/GitHub/lib/AdiabaticSolverGeneric.f90, used by other repos
+    ! too -- not changed here). The O-matrix loop below only ever wants a full PsiDim vector
+    ! at fixed (iL,nu), i.e. Psi(iL,:,nu)/Psi(jL,:,mu2) -- a non-contiguous, stride-L slice
+    ! of Psi, forcing gfortran to materialize a fresh array temporary on EVERY dsbmv/ddot call
+    ! (confirmed: "Fortran runtime warning: An array temporary was created" at this loop,
+    ! O(L^2*NumStates^2) times -- for L=NumStates=50 that's 6.25e6 redundant PsiDim-length
+    ! copies). Transposing once into PsiT(:,iL,nu) (contiguous by construction) up front costs
+    ! only O(L*NumStates) copies instead, and PsiT(:,iL,nu)/PsiT(:,jL,mu2) below need no
+    ! temporary at all.
+    DOUBLE PRECISION, ALLOCATABLE :: PsiT(:,:,:)
     INTEGER :: PsiDim, HalfBandWidth1D
     INTEGER :: iL,jL,nu,mu2,inu,jmu2,Ufile,LQuad,QOffset
     DOUBLE PRECISION :: RPowExp, RpowIL, wsq1, wsqL
@@ -132,6 +144,17 @@ CONTAINS
          Ufile,72,73,74,75,Uad,Psi,S_out,datadir)
     CLOSE(Ufile)
 
+    ! One-time transpose into a layout where a fixed-(iL,nu) PsiDim-vector is contiguous
+    ! (see PsiT's own declaration comment above) -- O(L*NumStates) copies here instead of
+    ! O(L^2*NumStates^2) array-temporary copies inside the O-matrix loop below.
+    ALLOCATE(PsiT(PsiDim,L,NumStates))
+    DO nu = 1,NumStates
+       DO iL = 1,L
+          PsiT(:,iL,nu) = Psi(iL,:,nu)
+       ENDDO
+    ENDDO
+    DEALLOCATE(Psi)
+
     !--- channel-overlap matrix O(l,nu;l',nu') for ALL DVR-point pairs in the box --
     !    identical to BuildSVDBox: a box IS the whole sector here, dense over all L. ---
     ALLOCATE(O(L*NumStates,L*NumStates))
@@ -139,12 +162,12 @@ CONTAINS
     DO iL = 1,L
        DO nu = 1,NumStates
           CALL dsbmv('U',PsiDim,HalfBandWidth1D,1.0d0,S_out,HalfBandWidth1D+1, &
-               Psi(iL,:,nu),1,0.0d0,TempPsi,1)
+               PsiT(:,iL,nu),1,0.0d0,TempPsi,1)
           inu = (iL-1)*NumStates+nu
           DO jL = 1,L
              DO mu2 = 1,NumStates
                 jmu2 = (jL-1)*NumStates+mu2
-                O(inu,jmu2) = ddot(PsiDim,TempPsi,1,Psi(jL,:,mu2),1)
+                O(inu,jmu2) = ddot(PsiDim,TempPsi,1,PsiT(:,jL,mu2),1)
              ENDDO
           ENDDO
        ENDDO
@@ -202,6 +225,6 @@ CONTAINS
     wsq1Out = wsq1
     wsqLOut = wsqL
 
-    DEALLOCATE(nodesR,weightsR,nodesQ,weightsQ,wpowQ,Uad,Psi,S_out,O,dXr,TmatBulk)
+    DEALLOCATE(nodesR,weightsR,nodesQ,weightsQ,wpowQ,Uad,PsiT,S_out,O,dXr,TmatBulk)
   END SUBROUTINE BuildSVDBoxGeneric
 END MODULE GenericSVDChannelBasis

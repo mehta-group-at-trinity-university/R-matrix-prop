@@ -1,5 +1,5 @@
 DataDir
-3bodydata_sech2_3boson_20ch_rmax200
+3bodydata_sech2_3boson_50ch_rmax200
 
 Order  xNumPoints  LegPoints
 5      10          10
