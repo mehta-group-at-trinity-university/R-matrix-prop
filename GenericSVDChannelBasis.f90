@@ -25,6 +25,13 @@
 !****************************************************************************************************
 MODULE GenericSVDChannelBasis
   IMPLICIT NONE
+  ! Eigenvector phase chain across SVD boxes.  BuildSVDBoxGeneric is called once per box by
+  ! RunHybridSVDGeneric's DO iBox = 1,NumSVDBoxes loop (already ascending-R), and
+  ! OneDimChannelsGeneric's FixPhase only chains WITHIN a call -- so without this each box
+  ! would take an arbitrary ARPACK sign at its own first R, i.e. a gauge jump at every box
+  ! boundary, exactly where BoxMatch assumes both sides share a channel basis.  All-zero
+  ! means "first box".
+  DOUBLE PRECISION, ALLOCATABLE, SAVE :: PhaseChain(:,:)
 CONTAINS
   SUBROUTINE BuildSVDBoxGeneric(a1,a2,L,NumStates,Order1D,Left1D,Right1D, &
        xNumPoints1D,xMin1D,xMax1D,LegendreFile1D,LegPoints1D,Shift,datadir, &
@@ -136,12 +143,16 @@ CONTAINS
     HalfBandWidth1D = Order1D
     ALLOCATE(Uad(L,NumStates,2),Psi(L,PsiDim,NumStates),S_out(HalfBandWidth1D+1,PsiDim))
     Ufile = 71
+    IF (.NOT.ALLOCATED(PhaseChain)) THEN
+       ALLOCATE(PhaseChain(PsiDim,NumStates))
+       PhaseChain = 0d0
+    ENDIF
     OPEN(unit=Ufile,file=TRIM(datadir)//'/SVDBoxUad.dat',status='replace')
     CALL OneDimChannelsGeneric(NumStates,PsiDim,0,0,LegendreFile1D,LegPoints1D,Shift, &
          Order1D,Left1D,Right1D,reducedmass,xNumPoints1D,xMin1D,xMax1D, &
          nodesR,L,GridRebuildEveryR,nodesR(L), &
          MyPotential,MyGridMaker,MyRobinCoeff, &
-         Ufile,72,73,74,75,Uad,Psi,S_out,datadir)
+         Ufile,72,73,74,75,Uad,Psi,S_out,datadir,PhaseChain)
     CLOSE(Ufile)
 
     ! One-time transpose into a layout where a fixed-(iL,nu) PsiDim-vector is contiguous

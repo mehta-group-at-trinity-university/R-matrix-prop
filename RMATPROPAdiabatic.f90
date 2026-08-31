@@ -216,10 +216,10 @@ PROGRAM main
   ! with energy so their matrix elements never need to be recomputed after
   ! this. Box 1 and the last box are handled fresh inside the energy loop.
   !---------------------------------------------------------------------
-  ! Quadratic box-boundary spacing (not just quadratic grid WITHIN box 1): boundary(i) =
-  ! xStart + (xEnd-xStart)*(i/NumBoxes)^2, clustering more/narrower boxes near xStart so
-  ! resolution is concentrated where the delta-function channel's U/Q curves vary fastest.
-  ! (BoxEdge(i), defined below at each use site, replaces the old uniform xStart+i*xDelt.)
+  ! Box boundaries are boundary(i) = xStart + (xEnd-xStart)*(i/NumBoxes)**BoxSpacingPower --
+  ! uniform at the BoxSpacingPower=1 set above; change BoxSpacingPower for a different box
+  ! grid (>1 clusters narrower boxes near xStart).  Distinct from the quadratic grid used
+  ! WITHIN box 1 by GridMaker.
 
   BPD1%NumChannels = NumChannels
   BPD1%Order = Order

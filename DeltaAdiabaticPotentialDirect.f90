@@ -20,6 +20,13 @@ MODULE DeltaAdiabaticPotentialDirect
   INTEGER, PARAMETER :: DirectOrder1D=6, DirectLeft1D=1, DirectRight1D=3
   INTEGER, PARAMETER :: DirectxNumPoints1D=20, DirectLegPoints1D=10
   DOUBLE PRECISION, PARAMETER :: DirectShiftInit=-1.0d0
+  ! Eigenvector phase chain across boxes.  SetAdiabaticPotentialDirect is called once per box,
+  ! and OneDimChannelsGeneric's FixPhase only chains WITHIN a call, so without this each box
+  ! would inherit an arbitrary ARPACK sign at its own first R -- a gauge jump at every box
+  ! boundary, right where BoxMatch assumes both sides share a channel basis.  Carries the
+  ! previous box's final eigenvectors forward; all-zero means "first box".  The DRIVER must
+  ! build boxes in ascending-R order (see RMATPROPAdiabaticDirectDelta.f90's own note).
+  DOUBLE PRECISION, ALLOCATABLE, SAVE :: PhaseChain(:,:)
   ! Number of angular states carried in the INTERMEDIATE sum that builds Q.
   ! OneDimChannelsGeneric forms Q as -P.P (dgemm), which is the closure relation
   ! Qtilde_mn = <dPhi_m/dR|dPhi_n/dR> = sum_k P_km P_kn -- EXACT only when k runs over a
@@ -76,6 +83,10 @@ CONTAINS
     !    so P/Q come out via Hellmann-Feynman using adjacent Rquad points -- no cross-R overlap
     !    matrix construction anywhere in this file. ---
     Shift = DirectShiftInit
+    IF (.NOT.ALLOCATED(PhaseChain)) THEN
+       ALLOCATE(PhaseChain(PsiDim,NumSolve))
+       PhaseChain = 0d0
+    ENDIF
     OPEN(unit=81,file='DeltaDirectUad.scratch',status='replace')
     OPEN(unit=82,file='DeltaDirectPmat.scratch',status='replace')
     OPEN(unit=83,file='DeltaDirectQmat.scratch',status='replace')
@@ -85,7 +96,7 @@ CONTAINS
          DirectOrder1D,DirectLeft1D,DirectRight1D,muLocal,DirectxNumPoints1D,0d0,dacos(-1d0)/6.0d0, &
          Rquad,NumQuad,.TRUE.,0d0, &
          DeltaZeroPotential,DeltaWedgeGridMaker,DeltaRobinCoeff, &
-         81,82,83,84,85,UadOut,PsiOut,S_out,datadirLoc)
+         81,82,83,84,85,UadOut,PsiOut,S_out,datadirLoc,PhaseChain)
     CLOSE(81)
     CLOSE(82)
     CLOSE(83)

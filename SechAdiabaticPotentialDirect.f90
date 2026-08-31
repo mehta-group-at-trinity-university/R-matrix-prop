@@ -19,6 +19,9 @@ MODULE SechAdiabaticPotentialDirect
   INTEGER, PARAMETER :: DirectOrder1D=5, DirectLeft1D=1, DirectRight1D=1
   INTEGER, PARAMETER :: DirectxNumPoints1D=200, DirectLegPoints1D=10
   DOUBLE PRECISION, PARAMETER :: DirectShiftInit=-5.0d0
+  ! Eigenvector phase chain across boxes -- see OneDimChannelsGeneric's PhaseSeed header and
+  ! RMATPROPAdiabaticDirect3Boson.f90's ascending-R build-order note.  All-zero = first box.
+  DOUBLE PRECISION, ALLOCATABLE, SAVE :: PhaseChain(:,:)
 CONTAINS
   SUBROUTINE SetAdiabaticPotentialDirect(BPD,muLocal)
     USE DataStructures
@@ -72,6 +75,10 @@ CONTAINS
     !    is P^2's negative, i.e. Qtilde, the SAME quantity AdiabaticPotential.f90 already
     !    assumes when it does +Q/(2mu) -- confirmed via that file's own header comment). ---
     Shift = DirectShiftInit
+    IF (.NOT.ALLOCATED(PhaseChain)) THEN
+       ALLOCATE(PhaseChain(PsiDim,NumStates))
+       PhaseChain = 0d0
+    ENDIF
     OPEN(unit=81,file='SechDirectUad.scratch',status='replace')
     OPEN(unit=82,file='SechDirectPmat.scratch',status='replace')
     OPEN(unit=83,file='SechDirectQmat.scratch',status='replace')
@@ -81,7 +88,7 @@ CONTAINS
          DirectOrder1D,DirectLeft1D,DirectRight1D,muLocal,DirectxNumPoints1D,0d0,dacos(-1d0)/6.0d0, &
          Rquad,NumQuad,.TRUE.,0d0, &
          SechPotential,SechGridMaker,SechRobinCoeff, &
-         81,82,83,84,85,UadOut,PsiOut,S_out,datadirLoc)
+         81,82,83,84,85,UadOut,PsiOut,S_out,datadirLoc,PhaseChain)
     CLOSE(81)
     CLOSE(82)
     CLOSE(83)

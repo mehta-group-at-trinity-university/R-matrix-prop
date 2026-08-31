@@ -145,6 +145,28 @@ PROGRAM main
   EIG%MatrixDim = BPD%MatrixDim
   CALL AllocateEIG(EIG)
 
+  ! BOX BUILD ORDER IS ASCENDING-R ON PURPOSE.  SetAdiabaticPotentialDirect threads the
+  ! eigenvector phase from one box into the next (OneDimChannelsGeneric's PhaseSeed), and that
+  ! chain is only a continuity statement if consecutive calls are radially adjacent -- building
+  ! 2..N-1 before box 1, as this once did, would seed box 1 from box N-1.  Keep box 1 first.
+  WRITE(6,*) "Building box 1..."
+  IF (NumBoxes.GE.2) THEN
+     ALLOCATE(Gam0Box1(BPD%MatrixDim,BPD%MatrixDim))
+     ALLOCATE(OverlapBox1(BPD%MatrixDim,BPD%MatrixDim))
+     ALLOCATE(LamBox1(BPD%MatrixDim,BPD%MatrixDim))
+     CALL AllocateBPD(BPD1)
+     BPD1%xl = xStart
+     BPD1%xr = xStart + (xEnd-xStart)*(1d0/DBLE(NumBoxes))**BoxSpacingPower
+     CALL GridMaker(BPD1%xPoints,BPD1%xNumPoints,BPD1%xl,BPD1%xr,"quadratic")
+     CALL MakeBasis(BPD1)
+     BPD1%lam(1:NumChannels) = Leff(1:NumChannels)
+     CALL SetAdiabaticPotentialDirect(BPD1,muLocal)
+     CALL CalcGamLam(BPD1,EIG,0,NumChannels)
+     Gam0Box1 = EIG%Gam0
+     OverlapBox1 = EIG%Overlap
+     LamBox1 = EIG%Lam
+  ENDIF
+
   WRITE(6,*) "Building interior boxes (SetAdiabaticPotentialDirect, one ARPACK diagonalization per quadrature point)..."
   IF (NumBoxes.GE.3) THEN
      ALLOCATE(Gam0Boxes(BPD%MatrixDim,BPD%MatrixDim,2:NumBoxes-1))
@@ -166,24 +188,6 @@ PROGRAM main
         LamBoxes(:,:,iBox) = EIG%Lam
         WRITE(6,'(A,I5,A,I5)') "  interior box ",iBox," / ",NumBoxes-1
      ENDDO
-  ENDIF
-
-  WRITE(6,*) "Building box 1..."
-  IF (NumBoxes.GE.2) THEN
-     ALLOCATE(Gam0Box1(BPD%MatrixDim,BPD%MatrixDim))
-     ALLOCATE(OverlapBox1(BPD%MatrixDim,BPD%MatrixDim))
-     ALLOCATE(LamBox1(BPD%MatrixDim,BPD%MatrixDim))
-     CALL AllocateBPD(BPD1)
-     BPD1%xl = xStart
-     BPD1%xr = xStart + (xEnd-xStart)*(1d0/DBLE(NumBoxes))**BoxSpacingPower
-     CALL GridMaker(BPD1%xPoints,BPD1%xNumPoints,BPD1%xl,BPD1%xr,"quadratic")
-     CALL MakeBasis(BPD1)
-     BPD1%lam(1:NumChannels) = Leff(1:NumChannels)
-     CALL SetAdiabaticPotentialDirect(BPD1,muLocal)
-     CALL CalcGamLam(BPD1,EIG,0,NumChannels)
-     Gam0Box1 = EIG%Gam0
-     OverlapBox1 = EIG%Overlap
-     LamBox1 = EIG%Lam
   ENDIF
 
   WRITE(6,*) "Building last box..."
