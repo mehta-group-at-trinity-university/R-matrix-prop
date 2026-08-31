@@ -6,14 +6,29 @@
 *.x
 
 # Run outputs and scratch, TOP LEVEL ONLY.  The leading slash matters: the
-# 3bodydata_*/ dataset directories are tracked data and their own .dat files must
-# NOT be ignored -- committing datasets is the convention in this repo.
+# 3bodydata_*/ dataset directories hold tracked parameter files whose names also
+# end in .dat, so a bare *.dat would be wrong.
 /*.dat
 /*.log
 /*.scratch
 /fort.*
-/*.inp.bak
-/*.bak
+
+# Bulk tabulated arrays inside dataset directories -- multi-MB numerical output,
+# regenerable by Adiabatic-Scattering-BoundStates from the .par.used recipe kept
+# alongside them.  The small PARAMETER/metadata files in the same directories
+# (Fit.data, FitLeff.data, masses.dat, *.par.used) ARE tracked, so a clone can see
+# what any dataset contains -- channel count, thresholds, Leff, fit window, masses
+# -- without carrying the arrays themselves.
+#
+# Note: datasets committed before this rule keep their arrays tracked (gitignore
+# does not affect already-tracked files).  That asymmetry is deliberate: the rule
+# applies going forward rather than rewriting history.
+3bodydata_*/Uad.dat
+3bodydata_*/Pmat.dat
+3bodydata_*/Qmat.dat
+3bodydata_*/dPmat.dat
+3bodydata_*/VQmat.dat
+3bodydata_*/Quick*.dat
 
 # macOS
 .DS_Store

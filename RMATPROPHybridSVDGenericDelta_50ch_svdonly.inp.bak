@@ -1,0 +1,15 @@
+NumChannels
+50
+
+NumBoxes  xStart  xEnd
+2        0.0d0   20.0d0
+
+Emin  Emax  NumEnergies
+-0.9999999635d0 -0.5d0 3
+quadratic
+
+LSVD
+20
+
+OrderPhi  xNumPointsPhi
+8         100

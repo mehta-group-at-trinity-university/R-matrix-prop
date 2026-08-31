@@ -1,0 +1,18 @@
+DataDir
+3bodydata_sech2_3boson_50ch_rmax200
+
+NumSVDBoxes  NumBoxes  xStart  xEnd
+2           2        0.0d0   200.0d0
+
+Emin  Emax  NumEnergies
+-0.999d0 -0.05d0 30
+linear
+
+LSVD
+50
+
+OrderPhi  xNumPointsPhi
+6         400
+
+OrderTail  xNumPointsTail  LegPointsTail
+5          10              10
