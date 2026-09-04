@@ -5,7 +5,7 @@
 ! diagonalization, SechFunctionPlugins physics) instead of AdiabaticPotential.f90's
 ! tabulate-then-interpolate pipeline -- eliminating the interpolant-domain-floor/near-origin-
 ! resolution problem entirely, exactly mirroring DeltaScat.f90's own no-interpolation design.
-! Threshold/Leff/mu/alpha/ddim are still read from the existing Fit.data/FitLeff.data/masses.dat
+! Threshold/Leff/mu/alpha/EffDimLocal are still read from the existing Fit.data/FitLeff.data/masses.dat
 ! (large-R asymptotic fits, unaffected by near-origin potential evaluation method).
 !
 ! Structurally identical to RMATPROPAdiabatic.f90 EXCEPT: (1) no CoulombC/ApplyCoulombC at all
@@ -38,7 +38,7 @@ PROGRAM main
   DOUBLE PRECISION, ALLOCATABLE :: Gam0Box1(:,:), OverlapBox1(:,:), LamBox1(:,:)
   DOUBLE PRECISION, ALLOCATABLE :: evalRed(:), evecRed(:,:), LamooDiag(:)
   DOUBLE PRECISION, ALLOCATABLE :: Threshold(:), Leff(:)
-  DOUBLE PRECISION muLocal, alpha, ddim, dum
+  DOUBLE PRECISION muLocal, alpha, EffDimLocal, dum
   DOUBLE PRECISION Emin, Emax, qOurs, Kelem, rawDelta, delta, prevDelta
   INTEGER NumOpenChannels, xNumPoints, LegPointsLocal, NumDataPoints
   INTEGER i, j, n, iBox, lx, kx, NumEnergies, ie, nBranch, PhaseFile, KMatFile, RecombFile
@@ -49,7 +49,7 @@ PROGRAM main
 
   !----------------------------------------------------------------------
   ! Read run parameters from the same .inp format RMATPROPAdiabatic.f90 uses (minus the
-  ! trailing ApplyCoulombC line, never needed here); Threshold/Leff/mu/alpha/ddim still come
+  ! trailing ApplyCoulombC line, never needed here); Threshold/Leff/mu/alpha/EffDimLocal still come
   ! from DataDir's own Fit.data/FitLeff.data/masses.dat -- only Uad.dat/Pmat.dat/Qmat.dat (the
   ! near-origin-sensitive tabulated curves) are bypassed.
   !----------------------------------------------------------------------
@@ -75,11 +75,11 @@ PROGRAM main
   ALLOCATE(xLeg(LegPoints),wLeg(LegPoints))
   CALL GetGaussFactors(LegendreFile,LegPoints,xLeg,wLeg)
 
-  !--- Fit.data header: NumChannels, NumDataPoints, alpha, ddim (same format ReadAdiabaticData
+  !--- Fit.data header: NumChannels, NumDataPoints, alpha, EffDimLocal (same format ReadAdiabaticData
   !    uses -- NumDataPoints is meaningless here, no tabulated array, but Fit.data still has
   !    the column so it must still be read positionally). ---
   OPEN(unit=21,file=TRIM(DataDir)//'/Fit.data',status='old')
-  READ(21,*) NumChannels, NumDataPoints, alpha, ddim
+  READ(21,*) NumChannels, NumDataPoints, alpha, EffDimLocal
   CLOSE(21)
   OPEN(unit=22,file=TRIM(DataDir)//'/masses.dat',status='old')
   READ(22,*)
@@ -97,9 +97,9 @@ PROGRAM main
 
   reducedmass = muLocal
   AlphaFactor = alpha
-  EffDim = ddim
+  EffDim = EffDimLocal
   Threshold = 2d0*reducedmass*Threshold
-  WRITE(6,*) "NumChannels = ",NumChannels," alpha = ",AlphaFactor," ddim = ",EffDim," mu = ",reducedmass
+  WRITE(6,*) "NumChannels = ",NumChannels," alpha = ",AlphaFactor," EffDim = ",EffDim," mu = ",reducedmass
   WRITE(6,*) "Energy scan: Emin = ",Emin," Emax = ",Emax," NumEnergies = ",NumEnergies
 
   PhaseFile = 50

@@ -164,7 +164,7 @@ CONTAINS
     ALLOCATE(xLeg(LegPoints),wLeg(LegPoints))
     CALL GetGaussFactors(LegendreFile,LegPoints,xLeg,wLeg)
 
-    WRITE(6,*) "NumChannels = ",NumChannels," alpha = ",AlphaFactor," ddim = ",EffDim," mu = ",reducedmass
+    WRITE(6,*) "NumChannels = ",NumChannels," alpha = ",AlphaFactor," EffDim = ",EffDim," mu = ",reducedmass
     WRITE(6,*) "Energy scan: Emin = ",Emin," Emax = ",Emax," NumEnergies = ",NumEnergies
     WRITE(6,*) "NumSVDBoxes = ",NumSVDBoxes," NumBoxes = ",NumBoxes," xStart = ",xStart," xEnd = ",xEnd, &
          " LSVD = ",LSVD

@@ -1028,7 +1028,7 @@ END MODULE DataStructures
       DOUBLE PRECISION mu, EE,rm,d,alpha
       DOUBLE PRECISION, ALLOCATABLE :: s(:),c(:),sp(:),cp(:)
       DOUBLE PRECISION, ALLOCATABLE :: Rmat(:,:),tmp1(:,:),tmp2(:,:)
-      DOUBLE PRECISION rhypj,rhypy,rhypjp,rhypyp
+      DOUBLE PRECISION rhypj,rhypy,rhypjp,rhypyp,enorm
       DOUBLE PRECISION k(BPD%NumChannels),Eth(BPD%NumChannels)
       INTEGER i,j,no,nw,nc,beta
 
@@ -1075,10 +1075,34 @@ END MODULE DataStructures
          !c(i) = -dsqrt(mu)*rhypy ! the factor of sqrt(mu) is for energy normalization
          !sp(i) = k(i)*dsqrt(mu)*rhypjp
          !cp(i) = -k(i)*dsqrt(mu)*rhypyp
-          s(i) = 1d0/dsqrt(Pi*k(i))*rhypj  ! energy-normalized: has the required 1/sqrt(k(i))
-          c(i) = -1d0/dsqrt(Pi*k(i))*rhypy
-          sp(i) = k(i)*1d0/dsqrt(Pi*k(i))*rhypjp
-          cp(i) = -k(i)*1d0/dsqrt(Pi*k(i))*rhypyp
+          ! Energy normalization, generalized to arbitrary alpha (corrected 2026-09-03).
+          !
+          ! K is symmetric (and S unitary) only if the reference pair's Wronskian is the SAME in
+          ! every channel: scaling channel i's pair by N_i sends K -> diag(N) K diag(N)^-1, so
+          ! K_ij -> (N_i/N_j) K_ij -- a channel-dependent N breaks symmetry, a common one cancels
+          ! identically. Working out the Wronskian for the pair hyperrjry actually returns,
+          !     W = c*sp - s*cp = N^2 * k * 2 * prefact^2 * x^(2*alpha+1-d)/Pi ,   x = k*rm,
+          ! channel-independence requires N ~ k**(d/2 - 1 - alpha).
+          !
+          ! The old form hardwired N = 1/sqrt(Pi*k) ~ k**(-1/2), which is that expression ONLY at
+          ! alpha = (d-1)/2 -- exactly the convention SetupGlobals always picks (line 44), which is
+          ! why this was never wrong for the intended usage. It IS wrong whenever alpha is chosen
+          ! independently (DeltaAlpha=0 in RMATPROPAdiabaticDirectDelta / SVDRobin / SVDAnalytic /
+          ! HybridSVDGenericDelta), and only shows up between channels whose thresholds -- hence
+          ! k -- differ. Measured before this fix, delta benchmark, 5 open channels, alpha=0, d=2:
+          ! K_1j/K_j1 = sqrt(E/(E+1)) = k_j/k_1 to 1e-13 across 6 energies and all 4 cross-
+          ! threshold pairs, while same-threshold pairs were symmetric to the last bit. That is an
+          ! 18% relative error at E=2 and 78% at E=0.05, with S non-unitary to match.
+          !
+          ! Reduces IDENTICALLY to the previous expression at alpha=(d-1)/2, so every result taken
+          ! under that convention is unchanged. Only the overall scale changes -- the relative
+          ! normalization of s against c is fixed by the Bessel Wronskian and is untouched.
+          ! (Residual rm-dependence of W is harmless: rm is common to all channels, so it cancels.)
+          enorm = k(i)**(0.5d0*d - 1d0 - alpha)/dsqrt(Pi)
+          s(i) = enorm*rhypj
+          c(i) = -enorm*rhypy
+          sp(i) = k(i)*enorm*rhypjp
+          cp(i) = -k(i)*enorm*rhypyp
 
       ENDDO
       ! K-matrix construction now matches adrmatprop.f (2006/2007 legacy code) exactly:
@@ -1113,8 +1137,42 @@ END MODULE DataStructures
          tmp1(i,i) = tmp1(i,i) + c(i)
          tmp2(i,i) = tmp2(i,i) + s(i)
       ENDDO
-      CALL SqrMatInv(tmp2, no)
-      SD%K = MATMUL(tmp1,tmp2)
+      ! K = -tmp2 * tmp1^-1, NOT tmp1 * tmp2^-1 (corrected 2026-09-03).
+      !
+      ! Friedrich, "Scattering Theory" (2013), Eqs. (2.375)-(2.377): with
+      !     psi ~ u^(s) + K u^(c),   u^(s) ~ sin(kR - l pi/2),  u^(c) ~ cos(kR - l pi/2),
+      ! "the coefficients of the cosine terms define the K-matrix", and K = tan(delta). Our s(i)
+      ! (from rhypj ~ J, regular) and c(i) (from -rhypy ~ -Y, and -Y_nu ~ +cos) ARE that pair, so
+      ! for psi = A s + B c the K-matrix is K = B/A. Substituting into psi = -R psi' -- the sign
+      ! convention this routine's Rmat actually uses -- gives
+      !     A (s + R sp) + B (c + R cp) = 0  ->  A*tmp2 + B*tmp1 = 0  ->  K = B/A = -tmp2/tmp1.
+      !
+      ! The previous form tmp1*tmp2^-1 equals -1/K = -cot(delta): a constant -pi/2 offset in the
+      ! phase shift, plus an inversion. Why that survived so long here: every phase-shift driver in
+      ! this repo writes delta with "no anchor/offset applied" (see RMATPROPAdiabatic.f90's header,
+      ! which defers the absolute anchor to the analysis step), so a constant -pi/2 is absorbed
+      ! downstream; TestFreeParticle.f90 prints SD%K but asserts only on the log-derivative; and the
+      ! recombination check is blind because S = (1+iK)(1-iK)^-1 is unitary for ANY real symmetric
+      ! K. Consumers that use ABSOLUTE S-matrix elements (state-to-state cross sections) do see it.
+      !
+      ! NOTE for existing datasets: previously written PhaseShift.dat files carry delta_old =
+      ! delta_new - pi/2 (mod pi). Re-anchor or regenerate before comparing against new output.
+      !
+      ! Verified against the exactly solvable free 2D problem (VeffAtomIon1D/diagnostics/
+      ! TestFreeSmatrix.f90): the propagated Rmat reproduces -J_lam(k a2)/(k J_lam'(k a2)) to 1e-10
+      ! per channel, and the corrected assembly then returns K = 0 to 3e-10, as it must for a purely
+      ! regular solution (B = 0 makes tmp2 vanish identically).
+      ! K = +tmp2 * tmp1^-1.  The sign was wrong (a spurious minus) in the 2026-09-03 version;
+      ! corrected 2026-09-04 against Notes_1DScatteringGi.pdf Eq. (22), K = (f - f'R)(g - g'R)^-1
+      ! with Eq. (18) psi ~ f - gK and Eq. (21) R = psi/psi'. Here s ~ rhypj ~ J is the REGULAR
+      ! solution (f) and c ~ -rhypy is the irregular one (g) -- the generic hyperspherical case.
+      ! Rmat = -psi/psi' (verified numerically), so R_Gi = -Rmat and Eq. (22) gives
+      !     K = (s + sp*Rmat)(c + cp*Rmat)^-1 = tmp2 * tmp1^-1.
+      ! NOTE the role assignment is OPPOSITE in VeffAtomIon1D's CalcK_AI, where the problem is
+      ! one-dimensional and the COSINE is regular for l=0 (Gi Eqs. 51-52) -- that routine keeps
+      ! tmp1*tmp2^-1 and is correct as written. Do not "unify" the two without re-deriving.
+      CALL SqrMatInv(tmp1, no)
+      SD%K = MATMUL(tmp2,tmp1)
 
       DO i=1,B%NumOpenR
          DO j=1,B%NumOpenR

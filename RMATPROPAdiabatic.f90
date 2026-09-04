@@ -61,7 +61,7 @@ PROGRAM main
   DOUBLE PRECISION, ALLOCATABLE :: Threshold(:), Leff(:), CoulombC(:)
   TYPE(InterpolatingFunction), ALLOCATABLE :: UInterp(:)
   TYPE(InterpolatingMatrix) :: PInterp, QInterp
-  DOUBLE PRECISION muLocal, alpha, ddim
+  DOUBLE PRECISION muLocal, alpha, EffDimLocal
   DOUBLE PRECISION Emin, Emax, qOurs, Kelem, rawDelta, delta, prevDelta
   INTEGER NumDataPoints, NumOpenChannels, xNumPoints, LegPointsLocal
   INTEGER i, iBox, lx, kx, NumEnergies, ie, nBranch, PhaseFile, KMatFile, RecombFile
@@ -82,7 +82,7 @@ PROGRAM main
 
   !----------------------------------------------------------------------
   ! Read the run's numerical parameters, and the physics (NumChannels,
-  ! alpha, ddim, muLocal, per-channel Threshold/Leff, U/P/Qtilde
+  ! alpha, EffDimLocal, muLocal, per-channel Threshold/Leff, U/P/Qtilde
   ! interpolants) from DataDir via AdiabaticPotential's ReadAdiabaticData.
   !----------------------------------------------------------------------
   OPEN(unit=7,file='RMATPROPAdiabatic.inp',status='old')
@@ -111,7 +111,7 @@ PROGRAM main
 
   ! Builds B-spline interpolants for U_n(R) (diagonal), P_mn(R) (first-derivative coupling),
   ! Qtilde_mn(R) (second-derivative coupling) from the tabulated Uad/Pmat/Qmat.dat.
-  CALL ReadAdiabaticData(DataDir,NumChannels,NumDataPoints,muLocal,alpha,ddim, &
+  CALL ReadAdiabaticData(DataDir,NumChannels,NumDataPoints,muLocal,alpha,EffDimLocal, &
        Threshold,Leff,UInterp,PInterp,QInterp)
   reducedmass = muLocal
   ! AlphaFactor is forced to 0 rather than taking the dataset's own alpha (from Fit.data,
@@ -132,7 +132,7 @@ PROGRAM main
           " this line's own comment / memory wavefn-reduction-term-bug."
   ENDIF
   AlphaFactor = 0d0
-  EffDim = ddim
+  EffDim = EffDimLocal
 
   ! Bound-pair (two-body-threshold) channels have a genuine Coulomb-like -C/R
   ! divergence in U+Q/2mu near the origin (Mehta, Esry & Greene, PRA 76, 022711
@@ -180,7 +180,7 @@ PROGRAM main
   ! silently correct for the Baluja benchmark (reducedmass=1, so 2*mu*threshold=threshold)
   ! but wrong for any reducedmass != 1.
   Threshold = 2d0*reducedmass*Threshold
-  WRITE(6,*) "NumChannels = ",NumChannels," alpha = ",AlphaFactor," ddim = ",EffDim," mu = ",reducedmass
+  WRITE(6,*) "NumChannels = ",NumChannels," alpha = ",AlphaFactor," EffDim = ",EffDim," mu = ",reducedmass
   WRITE(6,*) "Energy scan: Emin = ",Emin," Emax = ",Emax," NumEnergies = ",NumEnergies
 
   !----------------------------------------------------------------------

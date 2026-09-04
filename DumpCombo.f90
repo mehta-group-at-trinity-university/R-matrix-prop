@@ -8,7 +8,7 @@ PROGRAM DumpCombo
   IMPLICIT NONE
   CHARACTER(LEN=200) DataDir
   INTEGER NumChannels, NumDataPoints
-  DOUBLE PRECISION muLocal, alpha, ddim
+  DOUBLE PRECISION muLocal, alpha, EffDimLocal
   DOUBLE PRECISION, ALLOCATABLE :: Threshold(:), Leff(:)
   TYPE(InterpolatingFunction), ALLOCATABLE :: UInterp(:)
   TYPE(InterpolatingMatrix) :: PInterp, QInterp
@@ -17,7 +17,7 @@ PROGRAM DumpCombo
   DOUBLE PRECISION Rmin, Rmax
 
   CALL GET_COMMAND_ARGUMENT(1,DataDir)
-  CALL ReadAdiabaticData(TRIM(DataDir),NumChannels,NumDataPoints,muLocal,alpha,ddim, &
+  CALL ReadAdiabaticData(TRIM(DataDir),NumChannels,NumDataPoints,muLocal,alpha,EffDimLocal, &
        Threshold,Leff,UInterp,PInterp,QInterp)
 
   Rmin = 6d-5

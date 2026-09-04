@@ -11,7 +11,7 @@
 ! there is no asymptotic near-origin form assumed -- box 1 just diagonalizes the real potential.
 !
 ! Box1GridType='LobattoDirichlet' (true Dirichlet u(a1)=0), matching this repo's ordinary
-! AlphaFactor=(EffDim-1)/2 convention (Fit.data: alpha=0.5, ddim=2.0 for this dataset) -- NOT
+! AlphaFactor=(EffDim-1)/2 convention (Fit.data: alpha=0.5, EffDimLocal=2.0 for this dataset) -- NOT
 ! 'Radau', which is only correct for AlphaFactor=0 (see RMATPROPHybridSVDGeneric.f90's own header).
 !
 ! NumChannels/AlphaFactor/EffDim/mu/Threshold/Leff are read directly from DataDir's own
@@ -79,7 +79,7 @@ PROGRAM main
   ENDIF
   CLOSE(7)
 
-  !--- Fit.data header: NumChannels, NumDataPoints, alpha, ddim (AdiabaticPotential.f90's own
+  !--- Fit.data header: NumChannels, NumDataPoints, alpha, EffDimLocal (AdiabaticPotential.f90's own
   !    ReadAdiabaticData format -- read directly here rather than duplicated/hardcoded, so this
   !    driver can't silently drift from whatever DataDir actually contains). ---
   OPEN(unit=21,file=TRIM(DataDir)//'/Fit.data',status='old')

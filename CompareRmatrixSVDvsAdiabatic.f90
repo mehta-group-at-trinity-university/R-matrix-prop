@@ -45,7 +45,7 @@ PROGRAM CompareRmatrixSVDvsAdiabatic
   DOUBLE PRECISION, ALLOCATABLE :: Threshold(:), Leff(:), CoulombC(:)
   TYPE(InterpolatingFunction), ALLOCATABLE :: UInterp(:)
   TYPE(InterpolatingMatrix) :: PInterp, QInterp
-  DOUBLE PRECISION muLocal, alpha, ddim, EnergyLocal, xMinLocal, xEndLocal
+  DOUBLE PRECISION muLocal, alpha, EffDimLocal, EnergyLocal, xMinLocal, xEndLocal
   INTEGER NumDataPoints, xNumPoints, LegPointsLocal
   INTEGER OrderLocal
   DOUBLE PRECISION bfA, RmatA, ZfA, ZfpA
@@ -73,11 +73,11 @@ PROGRAM CompareRmatrixSVDvsAdiabatic
   ALLOCATE(xLeg(LegPoints),wLeg(LegPoints))
   CALL GetGaussFactors(LegendreFile,LegPoints,xLeg,wLeg)
 
-  CALL ReadAdiabaticData(DataDir,NumChannels,NumDataPoints,muLocal,alpha,ddim, &
+  CALL ReadAdiabaticData(DataDir,NumChannels,NumDataPoints,muLocal,alpha,EffDimLocal, &
        Threshold,Leff,UInterp,PInterp,QInterp)
   reducedmass = muLocal
   AlphaFactor = 0d0
-  EffDim = ddim
+  EffDim = EffDimLocal
 
   ! Sensitivity-hypothesis test (user request): shift xEnd by a quarter wavelength of channel 1's
   ! asymptotic oscillation to move bf=-Zfp/Zf away from wherever it landed near zero at xEnd=40.

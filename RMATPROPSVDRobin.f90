@@ -9,7 +9,7 @@
 ! or KMSFormulas.f's closed-form shortcut (AnalyticSVDChannelBasis.f90's BuildSVDBoxAnalytic).
 ! See RobinSVDChannelBasis.f90's own header for the full derivation and the two real bugs found
 ! and fixed while building it (missing Bloch surface term; DSYGV's arbitrary per-R eigenvector
-! sign needing an explicit R-continuous convention). Physics (mu/alpha/ddim/Threshold/Leff) is
+! sign needing an explicit R-continuous convention). Physics (mu/alpha/EffDimLocal/Threshold/Leff) is
 ! hardcoded to the exact delta-function values, matching DeltaScat.f90's own convention exactly --
 ! NOT read from Fit.data/FitLeff.data/masses.dat (no tabulated dataset involved at all).
 !
@@ -58,7 +58,7 @@ PROGRAM main
   INTEGER NumSVDBoxes, LSVD, MatrixDimSVD, OrderPhi, xNumPointsPhi
 
   !----------------------------------------------------------------------
-  ! Read the run's numerical parameters. Physics (mu/alpha/ddim/Threshold/Leff) is hardcoded
+  ! Read the run's numerical parameters. Physics (mu/alpha/EffDimLocal/Threshold/Leff) is hardcoded
   ! below to the exact delta-function values, not read from any file.
   !----------------------------------------------------------------------
   OPEN(unit=7,file='RMATPROPSVDRobin.inp',status='old')
@@ -102,7 +102,7 @@ PROGRAM main
   ENDDO
   Threshold = 2d0*reducedmass*Threshold
 
-  WRITE(6,*) "NumChannels = ",NumChannels," alpha = ",AlphaFactor," ddim = ",EffDim," mu = ",reducedmass
+  WRITE(6,*) "NumChannels = ",NumChannels," alpha = ",AlphaFactor," EffDim = ",EffDim," mu = ",reducedmass
   WRITE(6,*) "Energy scan: Emin = ",Emin," Emax = ",Emax," NumEnergies = ",NumEnergies
   WRITE(6,*) "NumSVDBoxes = ",NumSVDBoxes," xStart = ",xStart," xEnd = ",xEnd," LSVD = ",LSVD
 

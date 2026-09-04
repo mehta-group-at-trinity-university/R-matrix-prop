@@ -36,7 +36,7 @@ PROGRAM TestAlphaZero
   DOUBLE PRECISION, ALLOCATABLE :: Threshold(:), Leff(:), CoulombC(:)
   TYPE(InterpolatingFunction), ALLOCATABLE :: UInterp(:)
   TYPE(InterpolatingMatrix) :: PInterp, QInterp
-  DOUBLE PRECISION muLocal, alpha, ddim, EnergyLocal, xMinLocal, xMaxLocal
+  DOUBLE PRECISION muLocal, alpha, EffDimLocal, EnergyLocal, xMinLocal, xMaxLocal
   INTEGER NumDataPoints, NumOpenChannels, xNumPoints, LegPointsLocal, i, kx, lx
   INTEGER OrderLocal
 
@@ -58,11 +58,11 @@ PROGRAM TestAlphaZero
   ALLOCATE(xLeg(LegPoints),wLeg(LegPoints))
   CALL GetGaussFactors(LegendreFile,LegPoints,xLeg,wLeg)
 
-  CALL ReadAdiabaticData(DataDir,NumChannels,NumDataPoints,muLocal,alpha,ddim, &
+  CALL ReadAdiabaticData(DataDir,NumChannels,NumDataPoints,muLocal,alpha,EffDimLocal, &
        Threshold,Leff,UInterp,PInterp,QInterp)
   reducedmass = muLocal
   AlphaFactor = 0d0   ! <<< the key change: overrides the dataset's own alpha=0.5
-  EffDim = ddim
+  EffDim = EffDimLocal
   Order = OrderLocal
 
   ALLOCATE(CoulombC(NumChannels))

@@ -29,7 +29,7 @@ PROGRAM CompareRmatrixMultichannel
   DOUBLE PRECISION, ALLOCATABLE :: Threshold(:), Leff(:)
   TYPE(InterpolatingFunction), ALLOCATABLE :: UInterp(:)
   TYPE(InterpolatingMatrix) :: PInterp, QInterp
-  DOUBLE PRECISION muLocal, alpha, ddim, EnergyLocal, xEndLocal
+  DOUBLE PRECISION muLocal, alpha, EffDimLocal, EnergyLocal, xEndLocal
   INTEGER NumDataPoints
   DOUBLE PRECISION RmatOne, RmatFive
   DOUBLE PRECISION xEndBase, kChan1
@@ -49,11 +49,11 @@ PROGRAM CompareRmatrixMultichannel
   ALLOCATE(xLeg(LegPoints),wLeg(LegPoints))
   CALL GetGaussFactors(LegendreFile,LegPoints,xLeg,wLeg)
 
-  CALL ReadAdiabaticData(DataDir,NumChannels,NumDataPoints,muLocal,alpha,ddim, &
+  CALL ReadAdiabaticData(DataDir,NumChannels,NumDataPoints,muLocal,alpha,EffDimLocal, &
        Threshold,Leff,UInterp,PInterp,QInterp)
   reducedmass = muLocal
   AlphaFactor = 0d0
-  EffDim = ddim
+  EffDim = EffDimLocal
   Threshold = 2d0*muLocal*Threshold   ! CalcK/production convention
 
   WRITE(6,*) "Thresholds (rescaled) = ",Threshold

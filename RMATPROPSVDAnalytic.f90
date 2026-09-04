@@ -5,7 +5,7 @@
 ! BuildSVDBoxAnalytic, which gets its per-R channel data (Uad, and the channel-function overlap
 ! needed to relate different R's) directly from KMSFormulas.f's closed-form SolveQ/EvalU/
 ! EvalOverlapAt -- no B-spline basis, no OneDimChannels/ARPACK diagonalization, no interpolation,
-! no basis-set error anywhere. Physics (mu/alpha/ddim/Threshold/Leff) is hardcoded to the exact
+! no basis-set error anywhere. Physics (mu/alpha/EffDimLocal/Threshold/Leff) is hardcoded to the exact
 ! delta-function values, matching DeltaScat.f90's own convention exactly -- NOT read from
 ! Fit.data/FitLeff.data/masses.dat (there is no tabulated dataset involved at all, so the
 ! FitLeff.data column-misalignment bug fixed in AdiabaticPotential.f90 is structurally impossible
@@ -53,7 +53,7 @@ PROGRAM main
   INTEGER NumSVDBoxes, LSVD, MatrixDimSVD
 
   !----------------------------------------------------------------------
-  ! Read the run's numerical parameters. Physics (mu/alpha/ddim/Threshold/Leff) is hardcoded
+  ! Read the run's numerical parameters. Physics (mu/alpha/EffDimLocal/Threshold/Leff) is hardcoded
   ! below to the exact delta-function values, not read from any file.
   !----------------------------------------------------------------------
   OPEN(unit=7,file='RMATPROPSVDAnalytic.inp',status='old')
@@ -87,7 +87,7 @@ PROGRAM main
   ENDDO
   Threshold = 2d0*reducedmass*Threshold
 
-  WRITE(6,*) "NumChannels = ",NumChannels," alpha = ",AlphaFactor," ddim = ",EffDim," mu = ",reducedmass
+  WRITE(6,*) "NumChannels = ",NumChannels," alpha = ",AlphaFactor," EffDim = ",EffDim," mu = ",reducedmass
   WRITE(6,*) "Energy scan: Emin = ",Emin," Emax = ",Emax," NumEnergies = ",NumEnergies
   WRITE(6,*) "NumSVDBoxes = ",NumSVDBoxes," xStart = ",xStart," xEnd = ",xEnd," LSVD = ",LSVD
 

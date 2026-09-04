@@ -2,7 +2,7 @@
 ! Imports the adiabatic hyperspherical P/Q-tilde/U data produced by
 ! Adiabatic-Scattering-BoundStates' adiabatic solvers (Uad.dat, Pmat.dat, Qmat.dat,
 ! masses.dat) plus the long-range fit outputs already required to run that repo's own
-! CABA scattering pipeline (Fit.data for NumChannels/alpha/ddim, FitLeff.data for the
+! CABA scattering pipeline (Fit.data for NumChannels/alpha/EffDimLocal, FitLeff.data for the
 ! per-channel threshold and effective angular momentum used for asymptotic Bessel
 ! matching in CalcK). Builds B-spline interpolants via the canonical interpolation
 ! library (~/Documents/GitHub/interpolation/Interpolation.f90, module InterpType) rather
@@ -15,12 +15,12 @@ MODULE AdiabaticPotential
 
 CONTAINS
   !****************************************************************************************************
-  SUBROUTINE ReadAdiabaticData(DataDir,NumChannels,NumDataPoints,muLocal,alpha,ddim, &
+  SUBROUTINE ReadAdiabaticData(DataDir,NumChannels,NumDataPoints,muLocal,alpha,EffDimLocal, &
        Threshold,Leff,UInterp,PInterp,QInterp)
     IMPLICIT NONE
     CHARACTER(LEN=*), INTENT(in) :: DataDir
     INTEGER, INTENT(out) :: NumChannels, NumDataPoints
-    DOUBLE PRECISION, INTENT(out) :: muLocal, alpha, ddim
+    DOUBLE PRECISION, INTENT(out) :: muLocal, alpha, EffDimLocal
     DOUBLE PRECISION, ALLOCATABLE, INTENT(out) :: Threshold(:), Leff(:)
     TYPE(InterpolatingFunction), ALLOCATABLE, INTENT(out) :: UInterp(:)
     TYPE(InterpolatingMatrix), INTENT(out) :: PInterp, QInterp
@@ -38,9 +38,9 @@ CONTAINS
     DOUBLE PRECISION, ALLOCATABLE :: PMatFull(:,:,:), QMatFull(:,:,:)
     CHARACTER(LEN=200) headerline, fitLeffLine
 
-    !--- Fit.data header: NumChannels, NumDataPoints, alpha, ddim ---
+    !--- Fit.data header: NumChannels, NumDataPoints, alpha, EffDimLocal ---
     OPEN(unit=21,file=trim(DataDir)//'/Fit.data',status='old')
-    READ(21,*) NumChannels, NumDataPoints, alpha, ddim
+    READ(21,*) NumChannels, NumDataPoints, alpha, EffDimLocal
     CLOSE(21)
 
     !--- masses.dat: comment line, then mu (hyperradial reduced mass) ---

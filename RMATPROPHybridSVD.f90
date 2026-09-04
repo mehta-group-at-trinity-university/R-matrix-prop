@@ -54,7 +54,7 @@ PROGRAM main
   DOUBLE PRECISION, ALLOCATABLE :: Threshold(:), Leff(:), CoulombC(:)
   TYPE(InterpolatingFunction), ALLOCATABLE :: UInterp(:)
   TYPE(InterpolatingMatrix) :: PInterp, QInterp
-  DOUBLE PRECISION muLocal, alphaGlobal, ddim
+  DOUBLE PRECISION muLocal, alphaGlobal, EffDimLocal
   DOUBLE PRECISION Emin, Emax, qOurs, Kelem, rawDelta, delta, prevDelta
   INTEGER NumDataPoints, NumOpenChannels, xNumPoints, LegPointsLocal
   INTEGER i, iBox, lx, kx, NumEnergies, ie, nBranch, PhaseFile, KMatFile, RecombFile, UnitFile
@@ -111,11 +111,11 @@ PROGRAM main
   ALLOCATE(xLeg(LegPoints),wLeg(LegPoints))
   CALL GetGaussFactors(LegendreFile,LegPoints,xLeg,wLeg)
 
-  CALL ReadAdiabaticData(DataDir,NumChannels,NumDataPoints,muLocal,alphaGlobal,ddim, &
+  CALL ReadAdiabaticData(DataDir,NumChannels,NumDataPoints,muLocal,alphaGlobal,EffDimLocal, &
        Threshold,Leff,UInterp,PInterp,QInterp)
   reducedmass = muLocal
   AlphaFactor = alphaGlobal
-  EffDim = ddim
+  EffDim = EffDimLocal
 
   ! No near-origin Coulomb patch needed (see file header) -- CoulombC stays zero,
   ! only used by the B-spline-tail region's SetAdiabaticPotential calls (which never
@@ -125,7 +125,7 @@ PROGRAM main
 
   Threshold = 2d0*reducedmass*Threshold
   Rswitch = xStart + (xEnd-xStart)*DBLE(NumSVDBoxes)/DBLE(NumBoxes)
-  WRITE(6,*) "NumChannels = ",NumChannels," alpha = ",AlphaFactor," ddim = ",EffDim," mu = ",reducedmass
+  WRITE(6,*) "NumChannels = ",NumChannels," alpha = ",AlphaFactor," EffDim = ",EffDim," mu = ",reducedmass
   WRITE(6,*) "Energy scan: Emin = ",Emin," Emax = ",Emax," NumEnergies = ",NumEnergies
   WRITE(6,*) "NumSVDBoxes = ",NumSVDBoxes," Rswitch = ",Rswitch," NumBoxes = ",NumBoxes," xEnd = ",xEnd
   WRITE(6,*) "SVD box: L = ",LSVD," V2Depth = ",V2Depth," PotRange = ",PotRange," potAlpha = ",alpha

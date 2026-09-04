@@ -25,7 +25,7 @@ PROGRAM PlotWavefunction
   DOUBLE PRECISION, ALLOCATABLE :: Threshold(:), Leff(:), CoulombC(:)
   TYPE(InterpolatingFunction), ALLOCATABLE :: UInterp(:)
   TYPE(InterpolatingMatrix) :: PInterp, QInterp
-  DOUBLE PRECISION muLocal, alpha, ddim, EnergyLocal, xMinLocal, xMaxLocal
+  DOUBLE PRECISION muLocal, alpha, EffDimLocal, EnergyLocal, xMinLocal, xMaxLocal
   INTEGER NumDataPoints, NumOpenChannels, xNumPoints, LegPointsLocal, i, kx, lx
   INTEGER OrderLocal
 
@@ -47,11 +47,11 @@ PROGRAM PlotWavefunction
   ALLOCATE(xLeg(LegPoints),wLeg(LegPoints))
   CALL GetGaussFactors(LegendreFile,LegPoints,xLeg,wLeg)
 
-  CALL ReadAdiabaticData(DataDir,NumChannels,NumDataPoints,muLocal,alpha,ddim, &
+  CALL ReadAdiabaticData(DataDir,NumChannels,NumDataPoints,muLocal,alpha,EffDimLocal, &
        Threshold,Leff,UInterp,PInterp,QInterp)
   reducedmass = muLocal
   AlphaFactor = alpha
-  EffDim = ddim
+  EffDim = EffDimLocal
   Order = OrderLocal
 
   ALLOCATE(CoulombC(NumChannels))

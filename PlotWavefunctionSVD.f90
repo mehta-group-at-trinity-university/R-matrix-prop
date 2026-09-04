@@ -32,7 +32,7 @@ PROGRAM PlotWavefunctionSVD
   DOUBLE PRECISION, ALLOCATABLE :: Threshold(:), Leff(:)
   TYPE(InterpolatingFunction), ALLOCATABLE :: UInterp(:)
   TYPE(InterpolatingMatrix) :: PInterp, QInterp
-  DOUBLE PRECISION muLocal, alpha, ddim, EnergyLocal, a1, a2, Shift1D
+  DOUBLE PRECISION muLocal, alpha, EffDimLocal, EnergyLocal, a1, a2, Shift1D
   DOUBLE PRECISION xMin1D, xMax1D
   INTEGER NumDataPoints, NumOpenChannels, i, L, LQuad, Order1D, Left1D, Right1D
   INTEGER xNumPoints1D, LegPoints1D
@@ -69,11 +69,11 @@ PROGRAM PlotWavefunctionSVD
   ALLOCATE(xLeg(LegPoints),wLeg(LegPoints))
   CALL GetGaussFactors(LegendreFile,LegPoints,xLeg,wLeg)
 
-  CALL ReadAdiabaticData(DataDir,NumChannels,NumDataPoints,muLocal,alpha,ddim, &
+  CALL ReadAdiabaticData(DataDir,NumChannels,NumDataPoints,muLocal,alpha,EffDimLocal, &
        Threshold,Leff,UInterp,PInterp,QInterp)
   reducedmass = muLocal
   AlphaFactor = alpha
-  EffDim = ddim
+  EffDim = EffDimLocal
 
   Threshold = 2d0*reducedmass*Threshold
   NumOpenChannels = 0

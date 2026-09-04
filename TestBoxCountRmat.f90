@@ -19,7 +19,7 @@ PROGRAM TestBoxCountRmat
   IMPLICIT NONE
 
   CHARACTER(LEN=64) DataDir
-  DOUBLE PRECISION muLocal, alpha, ddim, EnergyLocal, xMinLocal, xEndLocal, xStartLocal
+  DOUBLE PRECISION muLocal, alpha, EffDimLocal, EnergyLocal, xMinLocal, xEndLocal, xStartLocal
   DOUBLE PRECISION, ALLOCATABLE :: Threshold(:), Leff(:)
   TYPE(InterpolatingFunction), ALLOCATABLE :: UInterp(:)
   TYPE(InterpolatingMatrix) :: PInterp, QInterp
@@ -41,11 +41,11 @@ PROGRAM TestBoxCountRmat
   ALLOCATE(xLeg(LegPoints),wLeg(LegPoints))
   CALL GetGaussFactors(LegendreFile,LegPoints,xLeg,wLeg)
 
-  CALL ReadAdiabaticData(DataDir,NumChannels,NumDataPoints,muLocal,alpha,ddim, &
+  CALL ReadAdiabaticData(DataDir,NumChannels,NumDataPoints,muLocal,alpha,EffDimLocal, &
        Threshold,Leff,UInterp,PInterp,QInterp)
   reducedmass = muLocal
   AlphaFactor = 0d0
-  EffDim = ddim
+  EffDim = EffDimLocal
 
   WRITE(6,*) "=== Path A: adiabatic (B-spline) box-count sanity check ==="
   CALL RunAdiabaticChain(1,RmatOut); WRITE(6,*) "NBoxes=1  Rmat = ",RmatOut
