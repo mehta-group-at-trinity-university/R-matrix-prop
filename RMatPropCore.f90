@@ -1211,9 +1211,9 @@ SUBROUTINE GridMakerLinear(xNumPoints,x1,x2,xPoints)
   ENDDO
 END SUBROUTINE GridMakerLinear
 !****************************************************************************************************
-! Same routine as ~/Documents/GitHub/AtomIon1D/AtomIon1D.f90 (and VeffAtomIon1D.f90,
+! Same routine as ~/Developer/AtomIon1D/AtomIon1D.f90 (and VeffAtomIon1D.f90,
 ! BackPropFT-AtomIon/milne_core.f90, TuneVeff.f90's GridMakerNew) -- not yet consolidated
-! into ~/Documents/GitHub/lib/, copied here rather than linking cross-project.
+! into ~/Developer/lib/, copied here rather than linking cross-project.
 SUBROUTINE GridMaker(grid,numpts,E1,E2,scale)
   IMPLICIT NONE
   DOUBLE PRECISION grid(numpts)

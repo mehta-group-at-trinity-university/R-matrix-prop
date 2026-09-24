@@ -105,7 +105,7 @@ box'' (\file{RMATPROPAdiabatic.f90}) and ``tabulate+SVD box''
 
 A third, more recent addition is a \textbf{pluggable physics interface}
 (\file{AdiabaticInterfaces.f90}/\file{AdiabaticSolverGeneric.f90}, in the shared
-\texttt{\textasciitilde/Documents/GitHub/lib/}) that lets a new physical problem be added by
+\texttt{\textasciitilde/Developer/lib/}) that lets a new physical problem be added by
 writing exactly three small subroutines (a potential evaluator, a grid maker, and a
 Robin-boundary-condition coefficient function) conforming to three abstract interfaces, instead of
 forking the entire adiabatic-solver machinery per problem the way
@@ -117,7 +117,7 @@ a new Hamiltonian} -- see Section~\ref{sec:newproblem}.
 \section{Where Everything Lives}
 %============================================================
 
-This pipeline spans three locations under \texttt{\textasciitilde/Documents/GitHub/}, which is
+This pipeline spans three locations under \texttt{\textasciitilde/Developer/}, which is
 itself \emph{not} a single project but a workspace of $\sim$30 independent git repositories (see
 the top-level \texttt{CLAUDE.md} there for the full workspace map).
 
@@ -140,12 +140,12 @@ the top-level \texttt{CLAUDE.md} there for the full workspace map).
   \file{DriveAdiabaticSolver1D.f90} (driver, writes \file{Uad.dat} etc.), \file{NewFitProg.f}
   (long-range fit $\to$ \file{Fit.data}/\file{FitLeff.data}), \file{DeltaScat/} (self-contained
   no-interpolation benchmark, own copy of \file{RMatPropCore.f90}). \\
-\texttt{\textasciitilde/Documents/GitHub/lib/} & Canonical shared numerics, used by many
+\texttt{\textasciitilde/Developer/lib/} & Canonical shared numerics, used by many
   unrelated repos in the workspace -- migrate stale local copies here, don't fork. &
   \file{Bsplines.f90}, \file{Quadrature.f90}, \file{matrix\_stuff.f90}, \file{besselnew.f90},
   \file{milne\_core.f90} (has a generic \sub{GridMaker}), \file{AdiabaticInterfaces.f90},
   \file{AdiabaticSolverGeneric.f90}. \\
-\texttt{\textasciitilde/Documents/GitHub/interpolation/} & Canonical B-spline interpolation
+\texttt{\textasciitilde/Developer/interpolation/} & Canonical B-spline interpolation
   library (module \texttt{InterpType}), used by \file{AdiabaticPotential.f90}. &
   \file{Interpolation.f90}. \\
 \bottomrule
@@ -243,7 +243,7 @@ This section is organized bottom-up: shared numerics, then \texttt{R-matrix-prop
 physics-independent engine, then the physics-provider layer (where a new problem's code lives),
 then the driver programs, then ASB's dataset-generation side.
 
-\subsection{Layer 0 -- Shared numerics (\texttt{\textasciitilde/Documents/GitHub/lib/})}
+\subsection{Layer 0 -- Shared numerics (\texttt{\textasciitilde/Developer/lib/})}
 
 \begin{description}
 \item[\file{Bsplines.f90}] \hfill \\
@@ -449,7 +449,7 @@ This is the layer you replace or extend for a new Hamiltonian.
   \sub{ReadAdiabaticData(DataDir,NumChannels,NumDataPoints,muLocal,alpha,ddim,Threshold,Leff,}
   \sub{UInterp,PInterp,QInterp)}: reads \texttt{DataDir/\{Fit.data,masses.dat,Uad.dat,Pmat.dat,}
   \texttt{Qmat.dat,FitLeff.data\}} and builds B-spline interpolants (order-2, piecewise linear, to
-  avoid Runge ringing) via \texttt{\textasciitilde/Documents/GitHub/interpolation}'s
+  avoid Runge ringing) via \texttt{\textasciitilde/Developer/interpolation}'s
   \texttt{InterpType} module. \\
   \sub{SetAdiabaticPotential(BPD,muLocal,UInterp,PInterp,QInterp,CoulombC)}: evaluates those
   interpolants at \texttt{BPD}'s own Gauss-Legendre quadrature points, filling

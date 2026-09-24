@@ -8,7 +8,7 @@
 ! xMin with a regularity condition (Boxes(1)%NumOpenL=0, no retained left DOF, no
 ! literature-R-matrix seed needed) instead of a diagonalized literature-R-matrix seed --
 ! this pattern (and the BPD1/Left=0-vs-BPD0/Left=2 basis split it requires) is carried
-! over from an earlier prototype, ~/Documents/GitHub/Adiabatic-R-Mat-Prop/RMATPROP2016.f90,
+! over from an earlier prototype, ~/Developer/Adiabatic-R-Mat-Prop/RMATPROP2016.f90,
 ! which validates the same regularity-start approach; unlike that prototype, Leff/
 ! Threshold here come from FitLeff.data rather than lam=0, so CalcK's asymptotic Bessel
 ! matching uses the correct generalized angular momentum.

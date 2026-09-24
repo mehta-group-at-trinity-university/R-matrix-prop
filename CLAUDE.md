@@ -8,8 +8,8 @@ Overhauled multichannel R-matrix propagation code for few-body quantum scatterin
 README.md). It propagates a log-derivative/R-matrix outward in hyperradius across a set of
 "boxes" spanning `[xStart, xEnd]`, using a B-spline (or DVR/SVD) basis per box, and extracts
 scattering K/S-matrices and phase shifts by matching to asymptotic Bessel reference functions
-at the outer edge. See the top-of-repo `CLAUDE.md` at `~/Documents/GitHub/CLAUDE.md` for the
-conventions shared across the whole `~/Documents/GitHub/` workspace (shared library migration
+at the outer edge. See the top-of-repo `CLAUDE.md` at `~/Developer/CLAUDE.md` for the
+conventions shared across the whole `~/Developer/` workspace (shared library migration
 policy, general build pattern) — this file covers only what's specific to this repo.
 
 There is no `.gitignore`; build artifacts (`*.o`/`*.mod`/`*.x`), run logs, and generated

@@ -7,7 +7,7 @@
 ! play for a B-spline box (RMatPropCore.f90): on return, BPD's geometry/Order and
 ! EIG%Gam0/Overlap/Lam are ready for CombineGam/PartitionAndEliminate/BoxMatch,
 ! unchanged. See Suno, PRA 109, 042814 (2024), Eqs. 12-20 for the underlying physics;
-! single-box template adapted from ~/Documents/GitHub/4BodySVD/4BodySVD.f90 (GetGaussLobattoFactors
+! single-box template adapted from ~/Developer/4BodySVD/4BodySVD.f90 (GetGaussLobattoFactors
 ! grid, CalcDX derivative matrix, CalcOMatrix channel overlap).
 !
 ! Design notes (see plan for full derivation):
@@ -386,7 +386,7 @@ CONTAINS
   !****************************************************************************************************
   ! Derivative of the i-th Gauss-Lobatto Lagrange DVR basis function, evaluated at
   ! node l, both ranging over the FULL set of sz nodes (no interior-only restriction --
-  ! see header note). Adapted from ~/Documents/GitHub/4BodySVD/4BodySVD.f90:284-306
+  ! see header note). Adapted from ~/Developer/4BodySVD/4BodySVD.f90:284-306
   ! (CalcDX), which computes the same quantity but only calls it for i restricted to
   ! interior nodes (its bound-state Dirichlet elimination). Includes the standard DVR
   ! normalization factor 1/sqrt(w_i) (pi_i(R)=L_i(R)/sqrt(w_i)).

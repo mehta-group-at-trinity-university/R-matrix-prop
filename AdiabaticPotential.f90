@@ -5,7 +5,7 @@
 ! CABA scattering pipeline (Fit.data for NumChannels/alpha/EffDimLocal, FitLeff.data for the
 ! per-channel threshold and effective angular momentum used for asymptotic Bessel
 ! matching in CalcK). Builds B-spline interpolants via the canonical interpolation
-! library (~/Documents/GitHub/interpolation/Interpolation.f90, module InterpType) rather
+! library (~/Developer/interpolation/Interpolation.f90, module InterpType) rather
 ! than CABS.f90's Akima tables, since R-matrix-prop's boxes need pointwise evaluation at
 ! arbitrary R rather than a fixed precomputed grid.
 !****************************************************************************************************

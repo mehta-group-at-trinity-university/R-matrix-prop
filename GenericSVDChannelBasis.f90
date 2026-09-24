@@ -66,7 +66,7 @@ CONTAINS
     DOUBLE PRECISION, ALLOCATABLE :: TempPsi(:)
     ! PsiT(PsiDim,L,NumStates): Psi with its first two dimensions transposed relative to
     ! OneDimChannelsGeneric's own (L,PsiDim,NumStates) convention (that shape/ordering is
-    ! shared-library, ~/Documents/GitHub/lib/AdiabaticSolverGeneric.f90, used by other repos
+    ! shared-library, ~/Developer/lib/AdiabaticSolverGeneric.f90, used by other repos
     ! too -- not changed here). The O-matrix loop below only ever wants a full PsiDim vector
     ! at fixed (iL,nu), i.e. Psi(iL,:,nu)/Psi(jL,:,mu2) -- a non-contiguous, stride-L slice
     ! of Psi, forcing gfortran to materialize a fresh array temporary on EVERY dsbmv/ddot call
