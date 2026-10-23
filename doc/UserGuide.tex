@@ -145,7 +145,10 @@ the top-level \texttt{CLAUDE.md} there for the full workspace map).
   \file{Bsplines.f90}, \file{Quadrature.f90}, \file{matrix\_stuff.f90}, \file{besselnew.f90},
   \file{milne\_core.f90} (has a generic \sub{GridMaker}), \file{AdiabaticInterfaces.f90},
   \file{AdiabaticSolverGeneric.f90}, \file{SVDBoundGeneric.f90} (bound-state spectra by Slow
-  Variable Discretization), \file{FEMDVRRadial.f90} (multi-sector FEM-DVR radial grid),
+  Variable Discretization; since 2026-10-13 the assembly and banded solve are also a public
+  \sub{SVDBoundSolve}, so a different angular solver can feed it -- AtomIon3D's multichannel
+  engine does), \file{FEMDVRRadial.f90} (multi-sector FEM-DVR radial grid),
+  \file{WignerSymbols.f90} (pure, thread-safe 3$j$/6$j$/9$j$ and Clebsch--Gordan, added 2026-10-01),
   \file{ScatteringModules.f90}, \file{units.f90}; \file{AtomIonAsymptotics.f90} (closed-form
   large-$R$ $U$/$P$/$Q$ for atom-ion in a trap, added 2026-09-23 --- four local copies still
   to be repointed); special functions \file{hyp.f} (hypergeometric, Forrey 1997); random
@@ -228,13 +231,16 @@ their own uniquely-named \texttt{.inp} file.
   introduce.}
 \item \textbf{\file{GaussLobatto.dat}/Gauss-Radau tables.} \sub{GetGaussLobattoFactors} (used by
   the SVD/DVR box builders) looks up nodes/weights by exact point count in a text table,
-  \file{GaussLobatto.dat} -- it does \emph{not} compute them on the fly, and only a handful of
-  point counts are pre-tabulated (6, 8, 10, 12, \ldots, 200). The \texttt{'LobattoDirichlet'}
-  \texttt{GridType} (Section~\ref{sec:box1bc}) needs \emph{both} $L$ and $L+1$ present
-  simultaneously, which \emph{no pair} in the shipped table satisfies -- two extra blocks
-  (N=20,21) were computed and appended with a short Python/\texttt{numpy.polynomial} script,
-  matching the file's existing tab-separated format exactly. If you pick a new $L$, check
-  the table first. Gauss-Radau nodes, by contrast, are computed on the fly (via
+  \file{GaussLobatto.dat} -- it does \emph{not} compute them on the fly. Since 2026-10-14 the
+  canonical table in \file{\textasciitilde/Developer/lib/} holds \textbf{every count from 3 to 50},
+  plus 64, 80, 100, 120, 160 and 200 (32 digits; the blocks are not in order, the reader scans for
+  a match). The \texttt{'LobattoDirichlet'} \texttt{GridType} (Section~\ref{sec:box1bc}) needs
+  \emph{both} $L$ and $L+1$, so any $L\le49$ now works; before, only the hand-added pair 20/21
+  did. Above 50, check the table first. The reader opens the file in the \emph{working directory}
+  before falling back to \texttt{\$QUAD\_DATA\_DIR}, so \repo{R-matrix-prop}'s own
+  \file{GaussLobatto.dat} is what its drivers actually read; it is a copy of \file{lib}'s (same
+  blocks, byte for byte) and must be kept in step with it, or deleted in favour of
+  \texttt{QUAD\_DATA\_DIR=\textasciitilde/Developer/lib}. Gauss-Radau nodes, by contrast, are computed on the fly (via
   \sub{GetGaussRadauFactors} in \file{SVDChannelBasis.f90}, a DSTEV-based routine added in this
   project's own history) -- no table dependency there.
 \item \texttt{Legendre.dat} must exist in the working directory at runtime (read by
@@ -375,7 +381,11 @@ call) and never evaluates a potential itself.
   \texttt{Energy}, \texttt{Pi}. \textbf{\texttt{AlphaFactor} convention}, verbatim from this
   module's own comment: ``This calculation ALWAYS sets \texttt{AlphaFactor = (EffDim-1)/2} and
   \texttt{StartBC = 0}'' -- see Section~\ref{sec:box1bc} for what this actually means and when
-  you'd deviate from it. (\texttt{LegPoints}/\texttt{xLeg}/\texttt{wLeg}/\texttt{LegendreFile}
+  you'd deviate from it. That convention belongs to this repo's \emph{drivers}, not to the
+  engine: \sub{BoxMatch} takes \texttt{dim} and \texttt{alphafact} as arguments, and AtomIon3D's
+  SVD boxes run it with \texttt{EffDim}$\,=6$, \texttt{AlphaFactor}$\,=0$ (radial measure $R^5\,dR$).
+  Whatever pair a caller uses, the box builder's radial measure must match it
+  (\texttt{RPowExp}$\,=\,$\texttt{EffDim}$-1-2\,$\texttt{AlphaFactor}). (\texttt{LegPoints}/\texttt{xLeg}/\texttt{wLeg}/\texttt{LegendreFile}
   live in the \emph{separate} \texttt{Quadrature} module, not here -- an easy mix-up.)
 \item[Module \texttt{DataStructures}] The core derived types:
 \begin{lstlisting}
@@ -495,6 +505,17 @@ This is the layer you replace or extend for a new Hamiltonian.
   \texttt{Generic} variant takes \texttt{MyPotential}/\texttt{MyGridMaker}/\texttt{MyRobinCoeff}
   (i.e. is pluggable, calling \sub{OneDimChannelsGeneric} internally); the plain version is
   hardcoded to ASB's \sub{OneDimChannels}.
+\item[\file{AtomIon3D/SVDBoxMC.f90} -- multichannel SVD boxes (external consumer)] \hfill \\
+  \sub{BuildSVDBoxMC} is \sub{BuildSVDBoxGeneric} with \repo{AtomIon3D}'s coupled-channel,
+  one-hyperangle engine (\sub{MCAdiabaticChannels}) in place of \sub{OneDimChannelsGeneric}, and
+  takes \texttt{mu} and \texttt{RPowExp} as arguments instead of reading \texttt{GlobalVars}. Its
+  output goes into \sub{PartitionAndEliminate}/\sub{BoxMatch} unchanged. Two differences matter to
+  anyone writing a similar builder: (i) each box freezes its angular grid at its \emph{own} right
+  edge, so adjacent boxes use different grids, and the cross-box sign is fixed by an exact overlap
+  of the two edge eigenvectors across both grids (\sub{CrossGridOverlapMC}), not by
+  \texttt{PhaseSeed} (gotcha~\ref{got:crossgrid}); (ii) it can return $P$ at the right edge in the
+  box's own gauge (\texttt{PEdge=}), which an outer match with coupled reference functions needs.
+  \file{AtomIon3D/Notes/MCBoundSVDGuide.tex} walks through the whole integration.
 \end{description}
 
 \subsection{Layer 3 -- Driver programs}
@@ -1016,6 +1037,47 @@ fixed-width file format.
   stateless, and load-bearing the moment a driver substituted a stateful eigensolve. Symptom to
   recognize: per-box data correct in isolation, but the answer degrading \emph{non-monotonically}
   under refinement.
+\item\label{got:crossgrid} \textbf{\texttt{PhaseSeed} is not enough when the angular grid changes
+  between boxes.} \texttt{PhaseSeed} chains signs by an overlap of raw basis coefficients, which
+  compares like with like only if both boxes use the same angular grid. A builder that freezes each
+  box's grid at its own right edge (needed when one grid cannot resolve the whole $R$ range, as in
+  AtomIon3D, where adjacent anchors differ by up to $2.3\times$) must instead overlap the shared-edge
+  eigenvectors exactly across the two grids -- both are piecewise polynomials, so Gauss quadrature on
+  the union of the two knot sets is exact -- and sign-flip each channel so the diagonal is positive.
+  A seam overlap $|\langle\Phi_\nu^{(s)}|\Phi_\nu^{(s+1)}\rangle|$ well below 1 flags a
+  near-degeneracy or a reordering across the seam. AtomIon3D's \sub{CrossGridOverlapMC} reaches 1
+  to $10^{-9}$.
+\item\label{got:closedsurf} \textbf{Dropping a closed channel at the outer surface imposes a
+  \emph{zero-derivative} wall on it, not decay.} The final box here is built with
+  \texttt{NumOpenR\,=\,NumOpenChannels} (\file{RMATPROPAdiabatic.f90},
+  \file{RMATPROPHybridSVDGeneric.f90}): the closed channels' surface terms are absent, and the
+  variational form then gives them the \emph{natural} boundary condition, $\partial_R F=0$, at
+  $x_{\text{End}}$. Just below each threshold that wall binds an artificial box state, seen as a
+  narrow resonance that moves toward the threshold as $x_{\text{End}}^{-2}$. In AtomIon3D some of these
+  were \emph{purely elastic} -- the phase jumps through $\pi/2$ with $|S_{bb}|=1$, invisible in
+  $|S|^{2}$ -- so check diagonal phases, not just transition probabilities. The cure used there:
+  keep closed channels within a window of their threshold at the surface and match them to
+  decaying (modified spherical Bessel) functions; a window of 2 (in oscillator units) converged the
+  phases to $2\times10^{-4}$. The same artifact is to be expected in this repo's drivers near any
+  threshold.
+\item\label{got:dirpole} \textbf{Locating levels with the box chain: keep $x_{\text{End}}$ small,
+  and do not bisect all the way onto a Dirichlet pole.} A bound level with a Dirichlet wall at the
+  last edge is a pole of a log-derivative eigenvalue $b_f$. Deep in the classically forbidden
+  region $b_f$ sweeps through $0$ and $\infty$ only within a window $\sim e^{-2\kappa x_{\text{End}}}$
+  wide, which no energy scan resolves (at $x_{\text{End}}=15$ AtomIon3D's scan missed every compact
+  level; at 5 it found them all). And driving the bisection to the pole sends $b_f\to\infty$, which
+  makes \sub{BoxMatchEigensystem} \texttt{STOP} with ``selected a formally-infinite mode''; stop at
+  $|1/b_f|<10^{-10}$. For counting levels exactly, without scanning at all, see
+  Section~\ref{sec:validation}.
+\item\label{got:covariant} \textbf{The SVD R-matrix's surface derivative is the covariant one.}
+  At a box edge the SVD propagation delivers $\langle\Phi_\nu|\partial_R\Psi\rangle =
+  F_\nu'+\sum_\mu P_{\nu\mu}F_\mu$, not the bare $F_\nu'$. An outer match whose reference functions
+  couple channels must therefore use $P$ at the matching radius, in the same gauge as the last box's
+  channels. AtomIon3D confirmed this: with the $P$ term dropped, the $K$-matrix asymmetry stayed at
+  0.1--0.3 for every matching radius instead of falling as $R^{-2}$. \sub{CalcK} matches to
+  diagonal hyperspherical-Bessel references, i.e.\ it treats the surface derivative as the bare
+  $F'$; that is accurate only where $P$ has decayed to negligible size at $x_{\text{End}}$, so check
+  $P$ there before trusting the match.
 \item \textbf{Literal $R=0$ is unusable for direct potential evaluation.} The hyperspherical
   kinetic prefactor $m=-1/(2\mu R^2)$ is genuinely singular there (confirmed: crashes
   LAPACK's \texttt{DLASCL} with an illegal-parameter error, and ARPACK's \texttt{\_saupd} with
@@ -1172,6 +1234,23 @@ how often to reach for them:
   exact side by side). \textbf{Delete \texttt{PhaseShift.dat} before each run and check it
   reappeared} -- every driver here writes that same filename, so a failed run silently leaves the
   previous driver's output in place and the comparison then looks plausible but is meaningless.
+\item \textbf{Box chain against an independent bound-state solve.} Close the chain with a
+  Dirichlet wall at a small $x_{\text{End}}$ and locate levels as poles of the propagated
+  log-derivative (gotcha~\ref{got:dirpole}); compare them with \file{lib}'s SVD bound-state solver
+  (\sub{SVDBoundSpectrum}/\sub{SVDBoundSolve}) at the same $x_{\text{Start}}$, $x_{\text{End}}$ and
+  wall. The two share the angular solver but not the radial discretization or the matching, so
+  agreement tests the box assembly, \sub{PartitionAndEliminate}, \sub{BoxMatch} and the seam gauge
+  all at once. AtomIon3D (\file{diagnostics/svdbox/TestSVDBoxBound.f90}) agreed to
+  $1.4\times10^{-6}$--$10^{-4}$, smaller than either method's own change under refinement.
+\item \textbf{Count levels instead of scanning for them.} Phase-like quantities (eigenphase sum,
+  log-derivative signs) wind through a resonance within its width, so a narrow resonance hides
+  between energy grid points. The number of closed-box levels below $E$ can be computed exactly
+  from the box matrices in one outward sweep of block Gaussian elimination, by counting pivot signs
+  (Sylvester's law of inertia), at every box edge at once; bisecting the count locates levels to
+  $10^{-12}$, and following them as the wall moves (stabilization) picks out trapped states. Theory:
+  \file{AtomIon3D/Notes/LevelCounting.tex}; implementation: \sub{CountLevels} in
+  \file{AtomIon3D/AtomIon3DScat.f90}, which works on the same \texttt{Gam0}/\texttt{Overlap} box
+  matrices this repo's SVD drivers build.
 \item \textbf{Literature/exact-formula comparison} where available (Mehta-Shepard atom-dimer
   $K$-matrix, Amaya-Tapia/Larsen/Popiel coupled-channel phase shifts, McGuire's exact
   elastic-unitarity result) -- the gold standard, but only available for the handful of exactly
